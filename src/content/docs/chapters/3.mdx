@@ -1,0 +1,170 @@
+---
+title: Chapter 3 - Home Manager
+description: Using nix to control your home directory, dotfiles but better!
+---
+
+import { Steps, FileTree, Aside } from "@astrojs/starlight/components";
+
+Home Manager (often abbrevieted to HM) is a project similar to NixOS, but for a specific user's home folder. You use NixOS to manage system programs, configuration, etc. But Home Manager is programs and configuration for a specific user.
+
+In this chapter we will...
+
+1. Add Home Manager as an input to our flake
+2. Learn how to add home manager modules
+3. Configure our `.face` file with home manager as an example
+
+## Adding Home Manager as an Input
+
+<Steps>
+1. First we need to add Home Manager as an input to our flake
+   In `flake.nix` add a new attr set to the `inputs` attr set called `home-manager` (this can technically be called whatever you like, some people shorten this to `hm`). In this new `home-manager` attr set add `url = "github:nix-community/home-manager";`. Then add `inputs.nixpkgs.follows = "nixpkgs";`.
+    ```nix title=flake.nix ins={3-6}
+    inputs = {
+        nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+        home-manager = {
+            url = "github:nix-community/home-manager";
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
+    };
+    ```
+     
+   This tells Nix two things:
+   1. We have an input named `home-manager` that should be fetched from the `nix-community/home-manager` GitHub repo
+   2. The Home Manager flake itself depends on `nixpkgs` as an input. To keep thing consistent, we tell Nix to make that input follow our `nixpkgs` input
+2. Now, we add `home-manager` as an argument to our `outputs` function:
+   ```nix title=flake.nix ins=", home-manager"
+   outputs = inputs @ { self, nixpkgs, home-manager } let #...
+   ```
+</Steps>
+  
+We now have access to home manager in our flake!
+
+## Telling NixOS About Home Manager
+
+Now we need NixOS to access home manager. First, in our `modules` list we should add `home-manager.nixosModules.home-manager`. 
+
+```nix title=flake.nix ins={3}
+modules = [
+    ./modules/config.nix
+    home-manager.nixosModules.home-manager
+];
+```
+
+This will load the required options into NixOS to use home manager.
+
+## Configuring Home Manager
+
+In `config.nix` (or a separate module if you feel like it). Create a new attr set called `home-manager`. 
+
+We're going to fill this with our home config, replace `YOURNAME` with your username below.
+
+```nix title=config.nix "YOURNAME"
+home-manager = {
+    useGlobalPkgs = true; # Sets HM to use the global nixpkgs instance
+    useUserPackages = true;
+    extraSpecialArgs = { inherit inputs; }; # Pass inputs to HM modules too
+    users.YOURNAME = import ../home/home.nix; # Point HM to our root home manager module for user "YOURNAME"
+};
+```
+
+Here you can see we're importing another file (`../home/home.nix`). This file will hold a *home manager module*, these are very similar in structure to NixOS modules so I recommend placing them in a different folder from `modules` to differentiate them.
+
+Create `home/home.nix` and give fill it with boilerplate for now.
+
+<FileTree>
+- flake.nix
+- flake.lock
+- modules/
+  - config.nix
+  - ...
+- home/
+  - **home.nix** Root HM Module
+  - ...
+</FileTree>
+
+```nix title=home/home.nix 
+{pkgs, ...}: {
+
+}
+```
+
+## Using Home Manager
+
+First things first we'll add these options, replace `YOURNAME` with your username.
+
+```nix title=home/home.nix "YOURNAME" ins={2-6}
+{pkgs, ...}: {
+    home = {
+        username = "YOURNAME";
+        homeDirectory = "/home/YOURNAME";
+        stateVersion = "24.11";
+    };
+}
+```
+
+This will tell home manager your username and where your home folder is.
+
+<Aside>
+You can split up home manager modules similar to NixOS modules, using the `imports` option.
+
+```nix title=home/home.nix ins={2} "./some-hm-module.nix"
+{pkgs, ...}: {
+    imports = [ ./some-hm-module.nix ];
+
+    # ...
+}
+```
+</Aside>
+
+<Aside title="Explore More!" type="tip">
+To find more options for home manager, use the [Home Manager Options Search](https://home-manager-options.extranix.com/?release=master).
+</Aside>
+
+## Example: Adding `.face`
+
+To go into a quick use case for HM, we'll add a file to the root of our home folder, `.face`. This file is used by some DEs to know what profile picture to display on the lockscreen, app menu, etc.
+
+<Steps>
+1. Place the image file in your config's repo (I like to place any non-nix files in a folder called `res` for resources)
+   <FileTree>
+   - flake.nix
+   - flake.lock
+   - modules/
+   - home/
+   - res/
+     - **YOURIMAGE.png**
+   </FileTree>
+2. Can't forget to
+   ```sh
+   git add .
+   ```
+3. In an HM module set up a link, replace `YOURIMAGE.png` with the name of your image file
+   ```nix title="home/home.nix" "YOURIMAGE.png" ins={4}
+   {pkgs, ...}: {
+     # ...
+
+     home.file.".face".source = ../res/YOURIMAGE.png;
+   }
+   ```
+   <Aside>
+     Notice how we need to put `.face` in quotes here. Home Manager accepts any arbitrary string in the `file` attr set, but since our attr name has a `.` we need to put in quotes.
+   </Aside>
+   <Aside>
+     We're once again seeing a path without quotes. In short this tells Nix
+     > While building, copy this file into the nix store and return a string to that nix store path.
+     
+     We'll get into what exactly the Nix store is in another chapter.
+   </Aside>
+</Steps>
+
+Build your VM and go ahead and `ls` your home directory. `.face` should now appear!
+
+<FileTree>
+- /home/user
+  - ...
+  - **.face** A symlink to the nix store
+</FileTree>
+
+## When To Use Home Manager
+
+Home manager was created primarily for non-NixOS system, so that at least *part* of your system could be managed by Nix. But it is also useful in NixOS for when you want to do user configuration or make your home folder somewhat declarative. If you ever come across a situation where both HM and NixOS provide an option consider if it should be a *system-wide* change or a *per-user* change, and don't be scared to experiment! You can always rollback.

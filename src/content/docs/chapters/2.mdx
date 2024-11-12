@@ -3,8 +3,7 @@ title: Chapter 2 - Housekeeping
 description: Boring stuff time! Setting up your config to be easier to edit and maintain later
 ---
 
-import { FileTree } from '@astrojs/starlight/components';
-import { Aside } from '@astrojs/starlight/components';
+import { FileTree, Aside, Steps } from '@astrojs/starlight/components';
 
 So far we've been working in one file with no VCS setup and no consistent formatting.
 
@@ -19,21 +18,37 @@ In this chapter we will...
 
 Before we do anything, we'll need to make a `.gitignore`, I'd recommend the following:
 
-```txt
-# Symlink to anything nix built
-result 
-# The VM image file QEMU creates for our VM
-nixos.qcow2
-```
+<Steps>
+1. Create a `.gitignore` file to prevent unwanted files from being checked in
+    <FileTree>
+    - flake.nix
+    - **.gitignore** Make sure it's in the root!
+    - ...
+    </FileTree>
 
-Now run `git init`, `git add .`, `git commit -m "Initial Commit"`. This will assume you know Git. So if you have any
-other Git config to do go ahead.
+    ```ignore title=".gitignore"
+    # Symlink to anything nix built (no trailing slash)
+    result 
+    # The VM image file QEMU creates for our VM
+    nixos.qcow2
+    ```
+2. Now initialize a new Git repo for your project.
+    ```sh
+    git init
+    git add .
+    git commit -m "Initial Commit"
+    ```
+</Steps>
 
 We now have a git repo for our config!
 
-### FROM NOW ON
-
-Whenever we *create or rename* a file in our repo, we need to add it with `git add .` for Nix to see it. If you ever get an error saying a file in the config could not be found, this is likely the cause.
+<Aside title="From Now On..." type="caution">
+Whenever we *create or rename* a file in our repo, we need to add it in git for Nix to see it. 
+```sh
+git add .
+```
+If you ever get an error saying a file in the config could not be found, this is likely the cause.
+</Aside>
 
 ## Fragmenting Our Config
 
@@ -58,41 +73,105 @@ Anything highlighted is something this guide is going to use later, so they'll b
 
 Now you'll need to edit the path specified in `flake.nix` in the `modules` array to point to `./modules/config.nix` instead.
 
-<Aside title="Pop Quiz">We just made files! What do we do to make sure Nix can see them?</Aside>
+<Aside type="tip" title="Pop Quiz!">We just made files! What do we do to make sure Nix can see them?</Aside>
 
 ### Importing other modules from config.nix
 
 Now we need to tell NixOS what other files to look at for modules.
 To do this, in `config.nix` create a new array called `imports` (usually this is the very first config option).
-This array should have the paths (relative to `config.nix`) of other modules to load. An example with the files we recommended above would look like:
+This array should have the paths (relative to `config.nix`) of other modules to load.
 
-```nix
-imports = [./nix.nix ./graphics.nix ./shell.nix];
+```nix title="modules/config.nix" ins={2}
+{pkgs, ...}: {
+  imports = [./nix.nix ./graphics.nix ./shell.nix];
+
+  # ...
+}
 ```
-
-We don't need `config.nix` here since it's already being loaded.
 
 ### File Contents
 
 Now the files we created need to actually be filled, use config.nix as reference, remember each module must return
 an attr set and are given a bunch of arguments. A good template for a module is:
 
-```nix
+```nix title="modules/some-module.nix"
 {pkgs, ...}: {
 
 }
 ```
 
+From there feel free to build your source tree however you want!
+
+<Aside type="tip">
+Remember that Nix/NixOS merges a lot of stuff! For example you can define `environment.systemPackages` in multiple files and it will aggregate all the items into one big array.
+
+If two things in different modules collide Nix will fail to evaluate and let you know.
+</Aside>
+
+### Making nix.nix
+
 I'll leave exactly where to place certain options up to you, however this guide is going to require you to place
-the `nix = { ... }` option inside `nix.nix`, we'll be importing it from somewhere else later.
+the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from somewhere else later.
 
-Remember that Nix merges a lot of stuff! you can define `environment.systemPackages` in multiple files and it will aggregate all the items into one big array.
+<Steps>
+1. Remove the `nix` attr set from `modules/config.nix`...
+    ```nix title="modules/config.nix" del={3-22}
+    {pkgs, ...}: {
+      # ...
+      nix = {
+        channel.enable = false;
+        package = pkgs.lix;
+        settings = {
+          experimental-features = [
+            "nix-command"
+            "flakes"
+            "ca-derivations"
+            "auto-allocate-uids"
+            "cgroups"
+          ];
+          auto-allocate-uids = true;
+          use-cgroups = true;
+          auto-optimise-store = true;
+        };
+        gc = {
+          automatic = true;
+          dates = "weekly";
+        };
+      };
+      # ...
+    }
+    ```
 
-<Aside>If two things in different modules collide Nix will fail to evaluate and let you know.</Aside>
+2. Then add it in `modules/nix.nix`...
+    ```nix title="modules/nix.nix" ins={2-21}
+    {pkgs, ...}: {
+      nix = {
+        channel.enable = false;
+        package = pkgs.lix;
+        settings = {
+          experimental-features = [
+            "nix-command"
+            "flakes"
+            "ca-derivations"
+            "auto-allocate-uids"
+            "cgroups"
+          ];
+          auto-allocate-uids = true;
+          use-cgroups = true;
+          auto-optimise-store = true;
+        };
+        gc = {
+          automatic = true;
+          dates = "weekly";
+        };
+      };
+    }
+    ```
+</Steps>
 
 ### Try Building
 
-Before continuing, make sure your config still builds and your VM is how you want it. If you don't want to run the VM and just want to check if it can build you can change the `run` in the command to `build` instead.
+Before continuing, make sure your config still builds and your VM is how you want it.
 
 ## Passing inputs to our configuration
 
@@ -102,27 +181,35 @@ Nix flakes are a wonderful way to get software straight from the repo the softwa
 see in our `flake.nix` we're grabbing `nixpkgs` from github, and since NixOS expects nix packages we have it already
 within our NixOS configuration.
 
-However, they may come a time (hint hint next chapter) that we need to access other inputs within our configuration. In order to do this we need to tell NixOS additional arguments to pass.
+However, there may come a time that we need to access other inputs within our configuration. In order to do this we need to tell NixOS additional arguments to pass.
 
-First things first on the line with `outputs = {`, put `inputs @` right before the `{`, so:
+<Steps>
+1. On the line with `outputs = {`, put `inputs @` right before the `{`.
+    ```nix title="flake.nix" ins="inputs @ "
+    outputs = inputs @ {
+        self,
+        nixpkgs
+    }: let
+    ```
+    This makes a new variable called `inputs` available that contains all of our flake inputs.
+2. Create a new attr set in our call to `pkgs.lib.nixosSystem` called `specialArgs`, we'll want to `inherit inputs;` here.
+    ```nix title="flake.nix" ins={3} "YOURNAME"
+    nixosConfigurations.YOURNAME = pkgs.lib.nixosSystem {
+      # ...
+      specialArgs = { inherit inputs; };
+      modules = [
+        # ...
+      ];
+    }
+    ```
+3. Now when we need to, we can specify `inputs` in our arguments on any module and have access to our flake inputs.
+    ```nix title="modules/some-module.nix" ins="inputs, "
+    {inputs, pkgs, ...}: {
+      # Access to flake inputs!
+    }
+    ```
+</Steps>
 
-```nix
-outputs = inputs @ {
-    self,
-    nixpkgs
-}: let
-```
-
-This makes a new variable called `inputs` available that contains all of our flake inputs.
-
-Now, we need to create a new attr set in our call to `pkgs.lib.nixosSystem` called `specialArgs`.
-And we'll want to `inherit inputs;` here, so:
-
-```nix
-specialArgs = { inherit inputs; };
-```
-
-Now when we need to, we can specify `inputs` in our arguments on any module and have access to our flake inputs.
 Our only inputs at the moment are `self` and `nixpkgs`, but as we add more this will come in handy.
 
 ## Auto-formatting
@@ -133,12 +220,22 @@ format Nix code, I'll use `alejandra` in this example.
 
 To setup a formatter simply add to the outputs attr set:
 
-```nix
-formatter.${system} = pkgs.alejandra;
+```nix title="flake.nix" ins={6}
+outputs = inputs @ {
+  self,
+  nixpkgs
+}: let pkgs = ...; {
+  legacyPackages.${system} = pkgs;
+  formatter.${system} = pkgs.alejandra;
+}
 ```
 
-Ideally put this right below the `legacyPackages` line.
+Now we can format our code with Alejandra.
 
-To run our formatter, simply run `nix fmt`.
+```sh
+nix fmt
+```
 
-There's also a VSCode extension, `kamadorueda.alejandra` that can allow VSCode to run formatting for you.
+<Aside type="tip">
+There's also a VSCode extension, `kamadorueda.alejandra`, that can allow VSCode to run formatting for you. This is also handy as a syntax checker as it won't format if you have invalid syntax.
+</Aside>

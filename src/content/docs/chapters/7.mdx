@@ -82,7 +82,7 @@ So with this in mind:
    ```sh "PARTITION_PATH"
    sudo swapon PARTITION_PATH
    ```
-3. Setup your *main partition* (`3` **if you did swap**, `2` otherwise)
+4. Setup your *main partition* (`3` **if you did swap**, `2` otherwise)
    ```sh "PARTITION_PATH" "NIXOS"
    sudo mkfs.ext4 PARTITION_PATH -L NIXOS
    ```
@@ -217,12 +217,12 @@ The system should initialize and reach some sort of greeter (`tuigreet`, `SDDM`,
 Before attempting to login (you can't, you don't have a password). We need to set your user password
 
 <Steps>
-1. Switch TTYs with `Ctrl+Alt+F2`. (You may need to hold `Fn` as well on a laptop)
-2. Login as `root` with the password you setup in the installer
-3. Run `passwd YOURNAME`, replacing `YOURNAME` with your normal user's name
-4. Enter the password you wish to use 
-5. Logout with `exit` or press `Ctrl+D`
-6. Switch back to TTY 1 with `Ctrl+Alt+F1`
+   1. Switch TTYs with `Ctrl+Alt+F2`. (You may need to hold `Fn` as well on a laptop)
+   2. Login as `root` with the password you setup in the installer
+   3. Run `passwd YOURNAME`, replacing `YOURNAME` with your normal user's name
+   4. Enter the password you wish to use 
+   5. Logout with `exit` or press `Ctrl+D`
+   6. Switch back to TTY 1 with `Ctrl+Alt+F1`
 </Steps>
 
 Now log in to your new system!
@@ -269,7 +269,7 @@ Finally, we placed `hardware-configuration.nix` in the root of the repo for simp
 <Aside>
 Just make sure to update the reference to it in `flake.nix`!
 
-```nix title=flake.nix ins={5} del={4}
+```nix title=flake.nix "YOURNAME" ins={5} del={4}
 modules = [
    ./config.nix
    # ...
@@ -285,7 +285,7 @@ Now that we're fully in NixOS we need to know a few more things.
 
 ### Switching
 
-Switching is the process of pointing your running system to another config
+Switching is the process of pointing your running system to another config and activating it.
 
 ```sh
 nixos-rebuild switch --flake .#
@@ -297,7 +297,7 @@ For convenience this is in your `justfile`, to rebuild and switch to a new confi
 
 ### Building
 
-Of course you don't always have to switch, you can also just build the system without switching
+Of course you don't always have to switch, you can also just build the system without switching.
 
 ```sh
 nom build .#nixosConfigurations.YOURNAME.config.system.build.toplevel
