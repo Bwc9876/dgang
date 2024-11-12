@@ -1,0 +1,173 @@
+---
+title: Chapter 6 - Preparing For Install
+description: The penultimate chapter! Preparing our config and creating/flashing an ISO
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Ok! We're familiar with Nix and NixOS. Now let's get ready to make the full switch.
+
+## Housekeeping Beforehand
+
+Before anything, make sure you commit to your repo.
+
+After that, I'd recommend deleting the `nixos.qcow2` VM image from your folder and booting the VM again. 
+
+Double-check that everything is how you want it without any previously configured state. This way we know that when you start up the system for the first time it'll be exactly how you expect it.
+
+## Preparing our Config
+
+Okay, first things first we'll need a bootloader for our system. Since until now we've only run with the VM output we haven't needed one. You'll want to set `boot.loader.systemd-boot.enable` equal to `true`. This will ensure a bootloader exists when installing (The VM will still work with this set).
+
+```nix title=config.nix ins={1}
+boot.loader.systemd-boot.enable = true;
+```
+
+Also, if you're device will be on WiFi make sure to enable wireless networking
+
+```nix title=config.nix ins={1}
+networking.networkmanager.enable = true;
+# or networking.wireless.iwd.enable
+# or networking.wireless.enable
+# up to you
+```
+
+Now, make sure to remove `password` under `users.users.YOURNAME`. This was just for testing and we don't want this set now. You'll be able to change your password after install.
+
+```nix title=config.nix "YOURNAME" del={3}
+users.users.YOURNAME = {
+  # ...
+  password = "asdf";
+  # ...
+};
+```
+
+Next I'm going to recommend some basic programs to have installed on your system in the event there's issues:
+
+- `vim` (or another buffer editor)
+- `comma` (so you can get any command you may need)
+
+Of course none of these are *required*, but for recovering a system it may help.
+
+Finally, we'll run a check to make sure the system is sound.
+
+```sh
+nix flake check
+```
+
+Finally finally, make sure to commit for good measure.
+
+## Creating an Installation ISO
+
+So, we could go ahead and download the official installer ISO from `nixos.org`. But...
+
+1. That installer uses channels (not flakes)
+2. It's a graphical installer (boring!)
+3. It's more in the spirit of NixOS to make our own!
+
+So instead we're going to leverage yet another amazing NixOS feature to generate an installer ISO just for us.
+
+### Adding the Config
+
+To start off you'll need a new `nixosConfigurations` output in `flake.nix`. You can call this something like `iso`. This should be effectively a copy of your main NixOS config, except for `modules`.
+
+For `modules` set it to this list:
+
+```nix title=flake.nix
+modules = [
+  "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix" # I'll explain this in a sec
+  ./modules/nix.nix # We want certain Nix features when installing
+  ./iso/iso.nix # Suggested path, change as wanted
+];
+```
+
+The first item we have is a reference to a module within `nixpkgs`. This modules is actually what the official installer is also based on, we'll use it to let us create an ISO of this NixOS image.
+
+### Configuring the ISO
+
+Now open `./iso/iso.nix` (or wherever you wish to place the ISO NixOS module), and fill out the boilerplate:
+
+```nix title=iso/iso.nix
+{pkgs, ...}: {
+
+}
+```
+
+In here we'll need some basic setup for our image:
+
+```nix title=iso/iso.nix ins={2-6}
+{pkgs, ...}: {
+  environment.systemPackages = with pkgs; [
+    gptfdisk # For partitioning disks
+    util-linux # Various utilities
+    vim # For editing things (you will need an editor!)
+  ];
+}
+```
+
+Now we're going to include our own flake inside the installer image. To do this we can use the special input `self` that we're passing via `specialArgs`.
+
+```nix ins=inputs, ins={7-8}
+{inputs, pkgs, ...}: {
+  environment.systemPackages = with pkgs; [
+    gptfdisk # For partitioning disks
+    util-linux # Various utilities
+    vim # For editing things (you will need an editor!)
+  ];
+
+  environment.etc."flake".source = inputs.self;
+}
+```
+
+Add this to your module, make sure to add `inputs` to the arguments it's taking as well.
+
+What this does is configure a symlink in `etc` called `flake` (put in quotes here to help get across that this can be any arbitrary string, you don't need the quotes). We're setting the source of this link to `inputs.self`. Which will tell Nix to make a copy of our Flake and place it in the Nix store, then return the store path.
+
+By doing this we're exposing the flake within the installer, we'll use this to build the full system when installing.
+
+### Building the ISO
+
+Now we're ready to build. Similar to the VM, NixOS creates a package for every configuration that builds an ISO image of the config.
+
+```sh /(iso)[^I]/
+nix build .#nixosConfigurations.iso.config.system.build.isoImage
+```
+
+<Aside>If you changed the name of your installer config, change `iso` here</Aside>
+
+After a few minutes of building and minifying, the command should complete. In `./result/iso` you should see your installed image generated! Now it's time to flash it.
+
+## Flashing to a Thumbdrive
+
+First things first find a flash drive, if you already know how to flash an ISO to make a thumbdrive bootable go ahead. If you don't plug in the flashdrive, if your OS auto-mounts it, you should click "eject" as we'll be working with the raw block device file.
+
+After ejecting the device (if your system auto-mounted), try to find it under `/dev`. Most USB devices will be `/dev/sdX` where `X` is a letter. **Keep in mind your own hard drive may be `/dev/sdX` as well**, so make sure to pick the correct one. To help find it, you can use the `lsblk` command to list all block devices. The device we want *should not* have a mount point.
+
+After determining the device path, you can run `dd` to copy the ISO image to the flash drive. Let's say I have the following setup:
+
+- My installer drive is on `/dev/sdX`
+- My installer ISO is in `/home/user/my-nixos-system/result/iso/nixos.iso` (this will be different for you as the ISO name includes a hash). Make sure to do an absolute path here.
+
+You can run:
+
+```sh "/home/user/my-nixos-system" "nixos.iso" "sdX"
+sudo dd if=/home/user/my-nixos-system/result/iso/nixos.iso of=/dev/sdX bs=4096 status=progress
+```
+
+This will copy the image in `4096`-byte blocks to the flash drive, wait for the copying to fully finish.
+
+After copying the drive may re-mount depending on your system, eject the flashdrive and then unplug it.
+
+We now have out very own custom installation ISO!
+
+## Final Prep
+
+<Aside type="danger">
+This goes without saying but installing a new distro *will wipe your current system*. Make sure to back up any files you want to keep.
+</Aside>
+
+<Aside type="caution">
+In addition if your system has secure boot enabled, disable it as it will refuse to launch the installer.
+</Aside>
+
+We're now (finally) ready to install NixOS!

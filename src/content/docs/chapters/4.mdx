@@ -1,0 +1,226 @@
+---
+title: Chapter 4 - Helpful Utilities
+description: A set of helpful utilities to know about and use with nix/NixOS
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+Real quick we're going to go over setting up and using some utilities.
+
+In this chapter we will...
+
+1. Install `nom` in our config
+2. Get a basic `justfile` setup
+3. Learn and install `comma`
+
+## Nix Output Monitor
+
+As your VM builds you might notice not much output is given. That's because Nix only shows the current line out stdout when building and doesn't make it too obvious what's happening.
+
+Nix output monitor is a community project that renders a nice-looking tree of all packages being built and shows the stdout of the current build process(es) above it. Adding nix-output-monitor to our NixOS config is as simple as adding it to `environment.systemPackages`. 
+
+```nix title=config.nix ins={3}
+environment.systemPackages = with pkgs; [
+    # ...
+    nix-output-monitor
+];
+```
+
+From there whenever we use `nix build` we can replace the `nix` with `nom` and it will build with better output.
+
+```sh ins=nom del=nix
+nix build
+nom build
+```
+
+To install `nom` on your host system we can make use of nix profiles. These are generally frowned upon when being used in NixOS system but for your host system it's a nice feature.
+
+```sh
+nix profile install nixpkgs#nix-output-monitor
+```
+
+## Just
+
+Just is a very simple command-line runner that we can use to make project-specific shortcuts. All commands are stored in a `justfile` which will be scanned when running `just`. Here's the justfile I recommend for your config. Replace `YOURNAME` with the name of your system config.
+
+```just title=justfile "YOURNAME"
+_default:
+    @just --list --unsorted --justfile {{justfile()}}
+
+[private]
+alias u := update
+# u:    update all inputs
+update:
+    nix flake update
+
+[private]
+alias b := build
+# b:    build the configuration
+build:
+    nom build .#nixosConfigurations.${HOSTNAME}.config.system.build.toplevel
+
+[private]
+alias s := switch
+# s:    activate configuration & add to boot menu
+switch: 
+    sudo nixos-rebuild switch --flake .#${HOSTNAME} --log-format internal-json |& nom --json
+
+[private]
+alias f := format
+# f: run nix fmt on the flake
+format:
+    nix fmt
+
+[private]
+alias gc := garbage-collect
+# gc: Run nix collect-garbage -d
+garbage-collect:
+    nix-collect-garbage -d
+    sudo nix-collect-garbage -d
+
+[private]
+alias vm := run-vm
+# vm: run VM of YOURNAME
+run-vm:
+    nom build .#nixosConfigurations.YOURNAME.config.system.build.vm
+    nix run .#nixosConfigurations.YOURNAME.config.system.build.vm
+```
+
+### Installing Just
+
+Similar to `nix-output-monitor`, just add `just` to your `environment.systemPackages`
+
+```nix title=config.nix ins={4}
+environment.systemPackages = with pkgs; [
+    # ...
+    nix-output-monitor
+    just
+];
+```
+
+...and install it on your host distro with nix profiles
+
+```sh
+nix profile install nixpkgs#just
+```
+
+After installing try running `just vm`. The VM should build and run with nice output!
+
+## Comma
+
+Comma is one of the most useful tools I've ever used. Sadly it's a bit more complicated to install on non-NixOS system so I won't get into how to do it here (all the more motivation to finish this tutorial I suppose).
+
+Comma is a way to run a command that you don't have installed. Remember how we ran `nix run nixpkgs#python3` in chapter 1? This never installed `python3`, merely copied it to our *nix store* and executed the binary in that store path. 
+
+That may not make total sense yet, next chapter we'll get into how the Nix store works. For now what you need to know is comma goes a step further, you pass it a command and it will find the package(s) that command belongs to, copy the package to your store, and execute it on-the-spot.
+
+We'll get into how to use it after installing it.
+
+### Adding Comma
+
+Adding Comma is not as simple as `just` or `nom`. 
+
+<Steps>
+1. We'll need a new `flake.nix` input for `nix-index-database`. This should point the the url `github:nix-community/nix-index-database`, and the `nixpkgs` input should follow our `nixpkgs` (we went over adding inputs in the last chapter with HM). Also don't forget to add it as an argument to `outputs`.
+   ```nix title=flake.nix ins={4-7} ins={14}
+   {
+      inputs = {
+         # ...
+         nix-index-database = {
+            url = "github:nix-community/nix-index-database";
+            inputs.nixpkgs.follows = "nixpkgs";
+         };
+      };
+
+      outputs = inputs @ {
+         self,
+         nixpkgs,
+         home-manager
+         nix-index-database
+      }: {  
+         # ...
+      }
+   }
+   ```
+
+2. Add `nix-index-database.nixosModules.nix-index` to the list of NixOS modules loaded by our config.
+   ```nix title=flake.nix ins={4}
+   modules = [
+   ./modules/config.nix
+   # ...
+   nix-index-database.nixosModules.nix-index
+   ];  
+   ```
+
+3. Now, we're going to add an *overlay* to our nixpkgs from `nix-index-database`. <br/>An overlay is another kind of flake output that edit nixpkgs in some way, this could be adding packages (what it'll do in our case), or it could even edit existing packages.<br/><br/>
+   To add an overlay, below the `inherit system;` line when we `import` nixpkgs. We'll add a new array called `overlays`. Then add the item `nix-index-database.overlays.nix-index`. This will add the required packages we want into our instance of `nixpkgs`.
+   ```nix title=flake.nix ins={3}
+   pkgs = import nixpkgs {
+   inherit system;
+   overlays = [nix-index-database.overlays.nix-index];
+   };
+   ```
+
+4. Now all we need to do is add the `comma-with-db` package to `environment.systemPackages`.
+   ```nix title=config.nix ins={3}
+   environment.systemPackages = with pkgs; [
+      # ...
+      comma-with-db
+   ];
+   ```
+</Steps>
+
+### Using Comma
+
+To test comma, start up your VM, open a terminal and run
+
+```sh
+cowsay Hello
+```
+
+> TODO: IMAGE COW WAITING
+
+Wait... **what??** We don't have cowsay installed? That's wild. But we *need* to cowsay!! 
+
+Comma to the rescue, to automatically grab `cowsay` from `nixpkgs` on command name alone and fix this crucial issue, simply prepend a comma (`,`) to the start of the command.
+
+```sh ins=", "
+, cowsay Hello!
+```
+
+A prompt should come up to select a package, I'd recommend `neo-cowsay` as the normal one has to download all of Perl.
+
+```txt
+ ________
+< Hello! >
+ --------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
+```
+
+Houston, we have cow! With comma you have access to any command in nixpkgs with no need to lookup which package it's in.
+
+<Aside>
+If you run comma again, it won't prompt you for which package to use. Comma remembers your choice.
+
+To clear this choice, use
+
+```sh
+, -e
+```
+</Aside>
+
+<Aside type="tip">
+If you need the command for multiple calls, `-s` will make a shell instead of executing once.
+
+```sh ins="-s"
+, -s cowsay
+```
+</Aside>
+
+Try it out with some commands! I recommend `cowsay`, `sl`, `toilet`, `lolcat`, and of course, `neofetch`.
+
+The command will be cached in your nix store until you *garbage collect* it. What's a nix store? What's garbage collection? I'm glad you asked! In the next chapter we'll go into the how and why of Nix and NixOS. And why a tool like comma can so easily exist.
