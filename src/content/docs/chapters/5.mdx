@@ -3,6 +3,8 @@ title: Chapter 5 - How Did We Get Here
 description: A look under-the-hood at how nix/NixOS function at a high level
 ---
 
+import { Aside, FileTree } from "@astrojs/starlight/components";
+
 Okay, you're not going to like to hear this but I believe that before you can install NixOS you need to understand how Nix works from a fundamental level. I tried to defer it for as long as possible with a shiny VM and cool tools but now we need to get into how Nix works and *why* it works.
 
 In this chapter we will learn...
@@ -17,27 +19,64 @@ In this chapter we will learn...
 
 ## Nix Fundamentals
 
-Nix is based on *functional programming*, which values purity and reproducibility. What this means for Nix is it sees every package as a result of a *pure* function, that is, a function with no side effects. A pure function will always output the same thing given the same inputs. Nix packages should always build the same given they same inputs.
+Nix is based on *functional programming*, which values purity and reproducibility. What this means for Nix is it sees every package as a result of a *pure* function, that is, a function with no side effects. 
+
+A pure function will always output the same thing given the same inputs. Nix packages should always build the same given they same inputs.
 
 Unlike other Linux package managers Nix won't use currently installed libraries/tools while building, all dependencies of a Nix package must be declared. This ensures that the package will always build the same on any machine.
 
 ## How a Nix Package is Made
 
-Nix packages are represented by a Nix expression, similar to how our NixOS config is an expression, packages are represented the same way. Nix evaluates a package expression and creates a *derivation* from it. This derivation contains everything the Nix build system needs to build the package: which other packages are needed, what commands to run, environment variables to set, etc.
+Nix packages are represented by a Nix expression, similar to how our NixOS config is an expression, packages are represented the same way.
 
-From a derivation the Nix build system will use it to build the package, building any dependencies as needed.
+```nix title="package.nix"
+{
+    rustPlatform,
+    gtk,
+    ...
+}: rustPlatform.buildRustPackage {
+    src = ./.;
+    pname = "my-package";
+    version = "0.1.0";
+    cargoLock.lockFile = ./Cargo.lock;
+
+    buildInputs = [ gtk ];
+}
+```
+
+Nix evaluates a package expression and creates a *derivation* from it. 
+
+<FileTree>
+- /nix/store/
+  - **[hash]-my-package-0.1.0.drv** Instructions on how to build my-package
+  - ...
+</FileTree>
+
+This derivation contains everything the Nix build system needs to build the package: which other packages are needed, what commands to run, environment variables to set, etc.
 
 ## How the Nix store is Edited and Used
 
-After building a package, the output of the build is placed in the *nix store* the nix store is a folder usually located in `/nix/store`. You can check on both your host system and VM for the existence of this directory and see it has *many* items. You'll also notice the directories all have a hash after the name, this is so no conflicts exist when building two version of the same package.
+After building a package, the output of the build is placed in the *nix store*, this is a folder usually located in `/nix/store`. 
 
-*Everything* nix builds is put in the nix store, when we do `nix shell` the package is built and placed in the nix store, and then the path to the `bin` folder of the package's output within the nix store is placed within the `PATH` environment variable. You may notice that `result` in your config's directory is a symlink to within the store. The nix store is the single source of truth, everything else (even many things within the store itself) reference or symlink to it.
+You can check on both your host system and VM for the existence of this directory and see it has *many* items. You'll also notice the directories all have a hash after the name, this is so no conflicts exist when building two version of the same package.
 
-### Note on Linking
+<FileTree>
+- /nix/store/
+  - [hash]-my-package-0.1.0.drv Instructions on how to build my-package
+  - **[hash]-my-package-0.1.0** Output of my-package
+  - ...
+</FileTree>
 
+*Everything* nix builds is put in the nix store, when we do `nix shell` the package is built and placed in the nix store, and then the path to the `bin` folder of the package's output within the nix store is placed within the `PATH` environment variable. You may also notice that `result` in your config's directory is a symlink to within the store. 
+
+The nix store is the single source of truth, everything else (even many things within the store itself) reference or symlink to it.
+
+
+<Aside title="Note On Dynamically Linked Binaries">
 This does pose a bit of an issue with programs that are dynamically linked against system libraries. As these libraries are in the nix store and not where the binary expects, they will fail to run. Nix has the ability to build minimal containers that conform to how binaries expect the system to be laid out (called an FHS - Filesystem Hierarchy Standard).
 
 Any programs built with Nix itself are patched to instead link against the proper paths in the nix store, this issue only comes up with binaries downloaded from the web (some `npm` packages may do this!).
+</Aside>
 
 ## How NixOS works
 

@@ -41,9 +41,11 @@ nix profile install nixpkgs#nix-output-monitor
 
 ## Just
 
-Just is a very simple command-line runner that we can use to make project-specific shortcuts. All commands are stored in a `justfile` which will be scanned when running `just`. Here's the justfile I recommend for your config. Replace `YOURNAME` with the name of your system config.
+Just is a very simple command-line runner that we can use to make project-specific shortcuts. All commands are stored in a `justfile` which will be scanned when running `just`. 
 
-```just title=justfile "YOURNAME"
+Here's the justfile I recommend for your config. Replace `YOURNAME` with the name of your system config.
+
+```txt title=justfile "YOURNAME"
 _default:
     @just --list --unsorted --justfile {{justfile()}}
 

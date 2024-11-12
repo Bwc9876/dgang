@@ -7,6 +7,17 @@ import { Steps, FileTree, Aside } from '@astrojs/starlight/components';
 
 So this is it, we have an installer flash drive and our system configured how we like.
 
+In this chapter we will...
+
+1. Boot into our installer image
+2. Wipe and prepare our disk for install
+3. Create a hardware config for our system
+4. **Install NixOS!**
+5. Cleanup after install
+6. Learn how to use NixOS on a real system
+
+## Booting The Installer
+
 To get started, I'd recommend opening this guide on another device that you can look at while installing. For obvious reasons you won't have access to this while installing.
 
 Plug in the flashdrive, reboot you system to the boot menu (usually by spamming F12 while the computer is starting) and select the flashdrive from the boot menu.
@@ -243,7 +254,7 @@ services.qemuGuest.enable = true;
 
 You can also optionally remove the `vm` recipe from your `justfile`
 
-```just title=justfile del={3-8}
+```txt title=justfile del={3-8}
 # ...
 
 [private]
