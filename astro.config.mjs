@@ -14,6 +14,10 @@ export default defineConfig({
         },
         sidebar: [
             {
+                label: 'Preface',
+                items: ["preface"]
+            },
+            {
                 label: 'Chapters',
                 autogenerate: { directory: "chapters" }
             },
@@ -22,6 +26,9 @@ export default defineConfig({
                 autogenerate: { directory: "epilogue" }
             }
         ],
+        logo: {
+            src: "./src/assets/logo.svg"
+        },
         components: {
             Head: "./src/components/Head.astro"
         },
