@@ -115,7 +115,7 @@ the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from 
 
 <Steps>
 1. Remove the `nix` attr set from `modules/config.nix`...
-    ```nix title="modules/config.nix" del={3-22}
+    ```nix title="modules/config.nix" del={3-17}
     {pkgs, ...}: {
       # ...
       nix = {
@@ -125,12 +125,7 @@ the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from 
           experimental-features = [
             "nix-command"
             "flakes"
-            "ca-derivations"
-            "auto-allocate-uids"
-            "cgroups"
           ];
-          auto-allocate-uids = true;
-          use-cgroups = true;
           auto-optimise-store = true;
         };
         gc = {
@@ -143,7 +138,7 @@ the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from 
     ```
 
 2. Then add it in `modules/nix.nix`...
-    ```nix title="modules/nix.nix" ins={2-21}
+    ```nix title="modules/nix.nix" ins={2-16}
     {pkgs, ...}: {
       nix = {
         channel.enable = false;
@@ -152,12 +147,7 @@ the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from 
           experimental-features = [
             "nix-command"
             "flakes"
-            "ca-derivations"
-            "auto-allocate-uids"
-            "cgroups"
           ];
-          auto-allocate-uids = true;
-          use-cgroups = true;
           auto-optimise-store = true;
         };
         gc = {
@@ -220,13 +210,14 @@ format Nix code, I'll use `alejandra` in this example.
 
 To setup a formatter simply add to the outputs attr set:
 
-```nix title="flake.nix" ins={6}
+```nix title="flake.nix" ins={5}
 outputs = inputs @ {
   self,
   nixpkgs
-}: let pkgs = ...; {
-  legacyPackages.${system} = pkgs;
+}: ... {
   formatter.${system} = pkgs.alejandra;
+
+  # ...
 }
 ```
 

@@ -145,16 +145,7 @@ Adding Comma is not as simple as `just` or `nom`.
    }
    ```
 
-2. Add `nix-index-database.nixosModules.nix-index` to the list of NixOS modules loaded by our config.
-   ```nix title=flake.nix ins={4}
-   modules = [
-      ./modules/config.nix
-      # ...
-      nix-index-database.nixosModules.nix-index
-   ];  
-   ```
-
-3. Now, we're going to add an *overlay* to our nixpkgs instance from `nix-index-database`. <br/>An overlay is another kind of flake output that edits nixpkgs in some way, this could be adding packages (what it'll do in our case), or it could even edit existing packages.<br/><br/>
+2. Now, we're going to add an *overlay* to our nixpkgs instance from `nix-index-database`. <br/>An overlay is another kind of flake output that edits nixpkgs in some way, this could be adding packages (what it'll do in our case), or it could even edit existing packages.<br/><br/>
    To add an overlay, below the `inherit system;` line when we `import` nixpkgs. We'll add a new array called `overlays`. Then add the item `nix-index-database.overlays.nix-index`. This will add the required packages we want into our instance of `nixpkgs`.
    ```nix title=flake.nix ins={3}
    pkgs = import nixpkgs {
@@ -163,7 +154,7 @@ Adding Comma is not as simple as `just` or `nom`.
    };
    ```
 
-4. Now all we need to do is add the `comma-with-db` package to `environment.systemPackages`.
+3. Now all we need to do is add the `comma-with-db` package to `environment.systemPackages`.
    ```nix title=config.nix ins={3}
    environment.systemPackages = with pkgs; [
       # ...

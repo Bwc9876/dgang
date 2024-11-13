@@ -3,7 +3,7 @@ title: Chapter 3 - Home Manager
 description: Using nix to control your home directory, dotfiles but better!
 ---
 
-import { Steps, FileTree, Aside } from "@astrojs/starlight/components";
+import { Steps, FileTree, Aside, LinkCard } from "@astrojs/starlight/components";
 
 Home Manager (often abbrevieted to HM) is a project similar to NixOS, but for a specific user's home folder. You use NixOS to manage system programs, configuration, etc. But Home Manager is programs and configuration for a specific user.
 
@@ -120,6 +120,8 @@ You can split up home manager modules similar to NixOS modules, using the `impor
 To find more options for home manager, use the [Home Manager Options Search](https://home-manager-options.extranix.com/?release=master).
 </Aside>
 
+<LinkCard target="_blank" title="Home Manager Option Search" href="https://home-manager-options.extranix.com/?release=master" />
+
 ## Example: Adding `.face`
 
 To go into a quick use case for HM, we'll add a file to the root of our home folder, `.face`. This file is used by some DEs to know what profile picture to display on the lockscreen, app menu, etc.
@@ -162,7 +164,7 @@ Build your VM and go ahead and `ls` your home directory. `.face` should now appe
 <FileTree>
 - /home/user
   - ...
-  - **.face** A symlink to the nix store
+  - **.face** A symlink to the nix store!
 </FileTree>
 
 ## When To Use Home Manager

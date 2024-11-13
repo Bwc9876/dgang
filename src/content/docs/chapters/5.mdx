@@ -27,24 +27,51 @@ Unlike other Linux package managers Nix won't use currently installed libraries/
 
 ## How a Nix Package is Made
 
-Nix packages are represented by a Nix expression, similar to how our NixOS config is an expression, packages are represented the same way.
+Nix packages are represented by a Nix expression, similar to how our NixOS config is an expression.
 
 ```nix title="package.nix"
+# Basic (and probably not exactly correct) nix package expression
 {
     rustPlatform,
     gtk,
     ...
 }: rustPlatform.buildRustPackage {
-    src = ./.;
+    src = ./.; # Assuming this is in a flake, otherwise we'd need to use a function to fetch source from GitHub, etc
     pname = "my-package";
     version = "0.1.0";
-    cargoLock.lockFile = ./Cargo.lock;
+    cargoLock.lockFile = ./Cargo.lock; # We need to include lock files because Nix needs to know *exactly* which versions of each dependency to fetch
 
     buildInputs = [ gtk ];
 }
 ```
 
+<Aside>
+Like a NixOS module, we can define packages inline or in a separate file as a function. Most people prefer to do it as a separate file.
+</Aside>
+
 Nix evaluates a package expression and creates a *derivation* from it. 
+
+```d2
+direction: right
+
+"Nix Package Expression": {
+  "Environment Variables"
+  "Other Packages We Depend On"
+  "Build Commands"
+  "Needed Tools"
+}
+
+".drv" {
+  shape: page
+}
+
+"Nix Package Expression"."Environment Variables" -> ".drv" {style.animated: true}
+"Nix Package Expression"."Other Packages We Depend On" -> ".drv" {style.animated: true}
+"Nix Package Expression"."Build Commands" -> ".drv" {style.animated: true}
+"Nix Package Expression"."Needed Tools" -> ".drv" {style.animated: true}
+```
+
+This derivation is then placed in the Nix store for use later.
 
 <FileTree>
 - /nix/store/
@@ -54,9 +81,32 @@ Nix evaluates a package expression and creates a *derivation* from it.
 
 This derivation contains everything the Nix build system needs to build the package: which other packages are needed, what commands to run, environment variables to set, etc.
 
-## How the Nix store is Edited and Used
+## How the Nix Store is Edited and Used
 
 After building a package, the output of the build is placed in the *nix store*, this is a folder usually located in `/nix/store`. 
+
+```d2
+"/nix/store/": {
+  ".drv": {
+    shape: page
+  }
+
+  "Package Output": {
+    shape: package
+  }
+
+  "Dependencies": {
+    shape: package
+    style.multiple: true
+  }
+
+  "Package Output" -> "Dependencies": Symlinks to if needed
+}
+
+"/nix/store/".".drv" -> "Nix Build Daemon": Reads {style.animated: true}
+"Nix Build Daemon" -> "/nix/store/"."Dependencies": Builds {style.animated: true}
+"Nix Build Daemon" -> "/nix/store/"."Package Output": Builds {style.animated: true}
+```
 
 You can check on both your host system and VM for the existence of this directory and see it has *many* items. You'll also notice the directories all have a hash after the name, this is so no conflicts exist when building two version of the same package.
 
@@ -82,7 +132,59 @@ Any programs built with Nix itself are patched to instead link against the prope
 
 NixOS takes Nix a step further and stores *system files* within the store. This can mostly be seen in `/etc` in your VM. Notice how many symlinks there are that head to the nix store. Notice how your shell's default `PATH` is set to include the nix store (or `/run/wrappers/bin` which links to it eventually as well). NixOS achieves a reproducible system by using the store as a single source of truth.
 
+```d2
+"/": {
+  "/etc/[some stuff]" {
+    shape: package
+    style.multiple: true
+  }
+  "/run/current-system/sw" {shape: package}
+
+  "/etc/[some stuff]" -> "/run/current-system/sw": "+/etc"
+}
+
+"Environment Variables": {
+  "PATH" {shape: parallelogram}
+  "XDG_DATA_DIRS" {shape: parallelogram}
+  "..." { 
+    shape: parallelogram
+    style.multiple: true 
+  }
+}
+
+"/nix/store": {
+  "/[hash]-system-path" {shape: package}
+}
+
+"/"."/run/current-system/sw" -> "/nix/store"."/[hash]-system-path": Symlink
+
+"Environment Variables"."PATH" -> "/"."/run/current-system/sw": "+/bin" 
+"Environment Variables"."XDG_DATA_DIRS" -> "/"."/run/current-system/sw": "+/share" 
+"Environment Variables"."..." -> "/nix/store"
+"Environment Variables"."..." -> "/"."/run/current-system/sw"
+```
+
+
 This also makes *switching* your NixOS config easy. NixOS VMs cannot switch by default, but when you install this will apply. Switching is really just a matter of changing what symlinks point to as well as updating environment variables (there *are* other things NixOS does as well, especially for hardware and bootloaders, but the point is it knows how to perform those operations based on your config).
+
+```d2
+"/run/current-system/sw" -> "[hash]-system-path": Old link severed {
+  target-arrowhead: {shape: diamond}
+  style.stroke-dash: 5
+}
+"/run/current-system/sw" -> "[different-hash]-system-path": New link created! {
+  target-arrowhead: {
+    shape: diamond 
+    style.filled: true
+  }
+}
+```
+
+<Aside>
+This diagram is a simplification, switching `/run/current-system/sw` is only one part of switching to a new config.
+
+NixOS also needs to update other paths, start/stop systemd services, potentially install a new bootloader, etc.
+</Aside>
 
 With NixOS, stuff like your `/etc` folder is effectively a package, and therefore we maintain the invariant that it must be able to be reproduced the exact same given the same set of inputs (your configuration). This is what we mean when we say NixOS creates reproducible systems, because we *build* them from the ground up every time there's no way for a unknown side effect to taint the system's functionality.
 
@@ -96,7 +198,27 @@ These rules set forth by Nix and NixOS provide us with some great features.
 
 Binary caches are why we don't need to recompile Firefox or Plasma from scratch when we add them to our config. If a package exists in the remote cache (by default Nix has `cache.nixos.org` as the only one), we can simply download its output. And we're sure the output will work because the package is pure.
 
-`cache.nixos.org` isn't the only binary cache too! In fact, it's very easy to make your own system serve it's nix store using the `nix-serve` command. This will allow other computers on the network to use your nix store to substitute packages if needed. Obviously there are security risks that can come with using a cache without knowing its reliability, Nix provides mechanisms to verify cache's identity to ensure trust.
+```d2
+"/nix/store": {
+  "python3": { shape: package }
+  "python3.drv": { shape: page }
+}
+
+"cache.nixos.org": { shape: cloud }
+
+"Nix Build Daemon" -> "/nix/store"."python3.drv": "Wants to build"
+"/nix/store"."python3.drv" -> "cache.nixos.org": "Found in remote"
+"cache.nixos.org" -> "/nix/store"."python3": "Downloaded from cache" { style.animated: true }
+"Nix Build Daemon" <- "/nix/store"."python3": "No need to build!"
+```
+
+`cache.nixos.org` isn't the only binary cache too! In fact, it's very easy to make your own system serve it's nix store using the `nix-serve` command.
+
+```sh
+nix-serve --host * --port 8080
+```
+
+This will allow other computers on the network to use your nix store to substitute packages if needed. Obviously there are security risks that can come with using a cache without knowing its reliability, Nix provides mechanisms to verify cache's identity to ensure trust.
 
 Personally I have two devices that use pretty similar NixOS configs, with many of the differences only being in hardware. By first building on my better computer and then hosting a cache off it, I not only don't have to build many packages on my other computer, I also can download any packages I would normally use `cache.nixos.org` for, which will be way faster over LAN!
 
@@ -110,6 +232,24 @@ Another advantage is we can use other computers to build Nix packages effortless
 
 You may have noticed that our `nixos.qcow2` file is relatively small. That's because NixOS doesn't simply copy in the Nix store to the image, it actually uses QEMU's virtio feature to expose the *host system's* nix store directly to the VM. This means we don't have to rebuild as much if we delete `nixos.qcow2`, and also we don't have to create a huge file system image for our VM.
 
+```d2
+"Host System": {
+
+  "nix run .#" -> "VM Config"
+
+  "VM": {
+    "/nix/store": { shape: cylinder }
+  }
+
+  "/nix/store": { shape: cylinder } 
+
+  "VM Config" -> "/nix/store": Builds all needed paths to { style.animated: true }
+  "VM Config" -> VM: Starts { style.animated: true }
+  "VM"."/nix/store" -> "/nix/store": Virtually mounted to
+}
+```
+
+
 From a higher level, NixOS is also great for VMs because it can reliably produce images exactly how we want. I've used NixOS VMs to test my software in a different system.
 
 The versatility of NixOS with VMs is so good that `nixpkgs` actually uses it to test every single package by running a variety of tests within a virtual machine in CI.
@@ -121,6 +261,10 @@ You can also build an ISO of a given NixOS system configuration (provided it's s
 ### Docker Containers
 
 Nix also allows the creation of docker containers. Many people compare Nix and Docker for reproducible builds. In my opinion Nix should be used to *create* an image, but Docker should still run it (because Nix can't obviously). With nix you have the full versatility of a functional language and nixpkgs (the [largest package repository](https://repology.org/repositories/graphs)) to build images.
+
+### Reliable CI
+
+Writing CI scripts can get challenging, especially when there's no way to truly test if the script will work given that you can't emulate the CI's environment (at least not easily, specifically with GitHub Actions). With Nix, you can create packages and checks declaratively and use pre-built actions to build/run them, and they'll always be in the correct environment!
 
 ### No More Guides
 
@@ -152,13 +296,76 @@ Before flakes we had other ways of using Nix, but for this guide we'll stick to 
 
 So, we know that the nix store holds *everything*. But how do we know when we don't need an entry in the store anymore? Nix has a special folder, `/nix/var/nix/gcroots` that holds many symlinks to the nix store.
 
-These symlinks represent *gcroots*. When we want to clean up our system, we look at these roots and any store entry that aren't a descendant of them (remember how we know what entries depend on what other entries because we *have to* declare all dependencies) and delete them. This way we only delete anything that isn't being used actively.
+```d2
+"/nix/var/nix/gcroots": {
+  "booted-system/*" { style.multiple: true }
+  "current-system/*" { style.multiple: true }
+  "auto/*" { style.multiple: true }
+  "..." { style.multiple: true }
+}
 
-So, when comma downloads a command for us, the store path that command is in (and any dependencies it references) are *not* a descendent of a `gcroot`, meaning when we garbage collect after running comma, the store entry and all of its dependencies (that aren't being used by something else), will be deleted.
+"/nix/store": { shape: cylinder }
 
-But what creates roots? Well, our NixOS system for one, each build of our system (called a generation) results in a gcroot being created. When we collect garbage using the special `nixos-collect-garbage` command, it will also delete any non-active generations from the gcroots, meaning they're get wiped.
+"/nix/var/nix/gcroots"."booted-system/*" -> "/nix/store": Symlink
+"/nix/var/nix/gcroots"."current-system/*" -> "/nix/store": Symlink
+"/nix/var/nix/gcroots"."auto/*" -> "/nix/store": Symlink
+"/nix/var/nix/gcroots"."..." -> "/nix/store": Symlink
+```
 
-We also create a root with the `result` symlink in our config's directory, this link will ensure anything needed to run the VM will not be cleared on garbage collection.
+These symlinks represent *gcroots*. When we want to clean up our system, we look at these roots. Any store entry that isn't a descendant of them (remember how we know what entries depend on what other entries because we *have to* declare all dependencies), and delete them. This way we only delete anything that isn't being used actively.
+
+So, when comma downloads a command for us, the store entry that package is in (and any dependencies it references) are *not* a descendent of a `gcroot`, meaning when we garbage collect after running comma, the store entry and all of its dependencies (that aren't being used by something else that *is* under `gcroots`), will be deleted.
+
+```d2
+"/nix/var/nix/gcroots": {
+  "current-system/sw"
+  "booted-system/sw"
+}
+
+"/nix/store": {
+  "[hash]-system-path": { shape: package }
+  "[another-hash]-system-path": { shape: package }
+  "[hash]-etc": { shape: package }
+  "[hash]-cowsay": { shape: package }
+
+  "..." { 
+    shape: package 
+    style.multiple: true
+  }
+
+  ad: "..." { 
+    shape: package 
+    style.multiple: true
+  }
+
+  "[hash]-system-path" -> "[hash]-etc": Safe!
+  "[hash]-system-path" -> "...": Safe!
+  "[another-hash]-system-path" -> "...": Safe!
+  "[hash]-cowsay" -> ad
+}
+
+"Oblivion": { 
+  shape: hexagon 
+  style.stroke-dash: 5
+}
+
+"/nix/var/nix/gcroots"."current-system/sw" -> "/nix/store"."[hash]-system-path": Safe!
+"/nix/var/nix/gcroots"."booted-system/sw" -> "/nix/store"."[another-hash]-system-path": Safe!
+"/nix/store"."[hash]-cowsay" -> "Oblivion": "No Roots!" { style.animated: true }
+"/nix/store".ad -> "Oblivion": "No Roots!" { style.animated: true }
+```
+
+<Aside>
+"Oblivion" here just means deleting the directory. My diagram library doesn't have a trash can shape :P.
+</Aside>
+
+But what creates `gcroots`?
+
+- Current NixOS config (`/nix/var/nix/gcroots/current-system`)
+- The NixOS config We Booted With (`/nix/var/nix/gcroots/booted-system`)
+- Anything we installed with `nix profile install` (`/nix/var/nix/gcroots/per-user`)
+- `result` symlinks from project directories (like our VM!) (`/nix/var/nix/gcroots/auto`)
+- Processes can hold roots as well (this is how `nix shell` works)
 
 ## Finally
 

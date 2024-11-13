@@ -1,0 +1,34 @@
+---
+title: Big ol' List Of Resources
+description: One-stop-shop for links to Nix/NixOS learning resources!
+---
+
+import { Aside, LinkCard } from "@astrojs/starlight/components";
+
+General resources for help with using Nix/NixOS
+
+## Search Utilities
+
+<LinkCard target="_blank" title="NixOS Option Search" description="Search for NixOS options to use in your config" href="https://search.nixos.org/options?channel=unstable" />
+<LinkCard target="_blank" title="Nix Packages Search" description="Search for Nix packages to install" href="https://search.nixos.org/packages?channel=unstable&size=500" />
+
+<Aside type="tip">
+Clicking the "<u>📦 Source</u>" link on a package or option in the above links will take you to the file in nixpkgs that the option/package is defined in. You can use this to see exactly what an option does, or how a package is built.
+</Aside>
+
+<LinkCard target="_blank" title="Home Manager Option Search" description="Search for Home Manager options to use in your config" href="https://home-manager-options.extranix.com/?release=master" />
+
+<LinkCard target="_blank" title="SourceGraph Nix Search" description="Search other people's configs for stuff to reference" href="https://sourcegraph.com/search?q=lang:Nix+-repo:NixOS/*+-repo:nix-community/*" />
+<LinkCard target="_blank" title="Noogle" description="Search available builtins and other features of Nix the language" href="https://noogle.dev/q?limit=100" />
+
+## Documentation / Guides
+
+<LinkCard target="_blank" title="NixOS Manual" href="https://nixos.org/manual/nixos/stable/" description="Main documentation for NixOS"/>
+<LinkCard target="_blank" title="NixOS Wiki" description="Unofficial user's wiki for NixOS" href="https://nixos.wiki/" />
+<LinkCard target="_blank" title="Nix.dev Guide" description="Reference Manual for Nix" href="https://nix.dev/manual/nix/2.18/introduction" />
+<LinkCard target="_blank" title="Determinate System Nix Guide" href="https://zero-to-nix.com/" description="Determinate System's Documentation For Nix"/>
+
+## Misc
+
+<LinkCard target="_blank" title="Nixpkgs Issue Search" description="Issues in the nixpkgs repo, helpful for seeing if something is broken for someone else" href="https://github.com/NixOS/nixpkgs/issues?q=sort%3Aupdated-desc+is%3Aissue+is%3Aopen" />
+<LinkCard target="_blank" title="My Config :)" href="https://github.com/Bwc9876/nix-conf" description="My own config that you could use for reference" /> 

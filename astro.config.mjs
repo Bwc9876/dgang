@@ -4,6 +4,8 @@ import starlight from '@astrojs/starlight';
 
 import sitemap from '@astrojs/sitemap';
 
+import d2 from 'astro-d2';
+
 // https://astro.build/config
 export default defineConfig({
     site: "https://dgang.bwc9876.dev",
@@ -17,6 +19,10 @@ export default defineConfig({
                 label: 'Chapters',
                 autogenerate: { directory: "chapters" }
             },
+            {
+                label: 'Epilogue',
+                autogenerate: { directory: "epilogue" }
+            }
         ],
         components: {
             Head: "./src/components/Head.astro"
@@ -24,5 +30,5 @@ export default defineConfig({
         customCss: [
             "./src/styles/theme.css"
         ]
-    }), sitemap()],
+    }), sitemap(), d2({theme: {default: '8', dark: "200"}})],
 });
