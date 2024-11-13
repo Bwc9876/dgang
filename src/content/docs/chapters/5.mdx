@@ -325,7 +325,6 @@ So, when comma downloads a command for us, the store entry that package is in (a
 "/nix/store": {
   "[hash]-system-path": { shape: package }
   "[another-hash]-system-path": { shape: package }
-  "[hash]-etc": { shape: package }
   "[hash]-cowsay": { shape: package }
 
   "..." { 
@@ -338,7 +337,6 @@ So, when comma downloads a command for us, the store entry that package is in (a
     style.multiple: true
   }
 
-  "[hash]-system-path" -> "[hash]-etc": Safe!
   "[hash]-system-path" -> "...": Safe!
   "[another-hash]-system-path" -> "...": Safe!
   "[hash]-cowsay" -> ad
