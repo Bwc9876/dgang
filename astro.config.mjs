@@ -2,8 +2,6 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-import sitemap from '@astrojs/sitemap';
-
 import d2 from 'astro-d2';
 
 // https://astro.build/config
@@ -30,5 +28,5 @@ export default defineConfig({
         customCss: [
             "./src/styles/theme.css"
         ]
-    }), sitemap(), d2({theme: {default: '8', dark: "200"}})],
+    }), d2({theme: {default: '8', dark: "200"}})],
 });

@@ -3,7 +3,7 @@ title: Chapter 6 - Preparing For Install
 description: The penultimate chapter! Preparing our config and creating/flashing an ISO
 ---
 
-import { Aside } from "@astrojs/starlight/components";
+import { Aside, LinkCard, Steps } from "@astrojs/starlight/components";
 
 Ok! We're familiar with Nix and NixOS. Now let's get ready to make the full switch.
 
@@ -48,6 +48,72 @@ users.users.YOURNAME = {
   # ...
 };
 ```
+
+### Adding NixOS Hardware
+
+[NixOS hardware](https://github.com/NixOS/nixos-hardware) is a flake maintained by the NixOS community that contains various config settings that improve the NixOS experience on devices. 
+
+<LinkCard target="_blank" title="NixOS hardware" href="https://github.com/NixOS/nixos-hardware"/>
+
+Take a look at the repo and see if your computer's model is there as a `.nix` file. If it is we can add it to your config.
+
+<Steps>
+1. Add `nixos-hardware` as an input
+    ```nix title="flake.nix" ins={4} ins={12}
+    {
+      inputs = {
+        # ...
+        nixos-hardware.url = "github:NixOS/nixos-hardware"; # No nixpkgs input, don't need to override
+      };
+
+      outputs = inputs @ {
+        self,
+        nixpkgs,
+        home-manager,
+        nix-index-db,
+        nixos-hardware,
+      }: {} # ...
+    }
+    ```
+2. Add your computer's module to `modules` (I'll add the Lenovo ThinkPad T430 as an example)
+    ```nix title=flake.nix "YOURNAME" "lenovo-thinkpad-t430" ins={6}
+    nixosConfigurations.YOURNAME = nixpkgs.lib.nixosSystem {
+      # ...
+      modules = [
+        ./modules/config.nix
+        # ...
+        nixos-hardware.nixosModules.lenovo-thinkpad-t430
+      ];
+    };
+    ```
+    <Aside>
+    You can find the exact name of your computer's module by checking `flake.nix` in the `nixos-hardware` repo.
+    </Aside>
+</Steps>
+
+Your config should now be tweaked to work well with your hardware configuration.
+
+### Nvidia Note
+
+<Aside type="caution">
+If you're using Nvidia, you may need unfree packages to run NixOS
+
+To allow Nix to fetch unfree packages, add a `config` to our instantiation of `nixpkgs`
+
+```nix title="flake.nix" ins={5}
+let 
+system = "x86_64-linux";
+pkgs = import nixpkgs {
+  inherit system;
+  config.allowUnfree = true;
+  # ...
+}; in {
+  # ...
+}
+```
+</Aside>
+
+### Handy Utilities
 
 Next I'm going to recommend some basic programs to have installed on your system in the event there's issues:
 

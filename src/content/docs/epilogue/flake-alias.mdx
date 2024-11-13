@@ -1,0 +1,48 @@
+---
+title: Using Your Flake for nix run
+description: Updating your flake and `nix` config to allow you to use your own flake for `nix run` over `nixpkgs`
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+Currently when you run `nix run nixpkgs#python3`, nix will checkout the latest `nixpkgs` and grab `python3`
+
+This poses three potential problems
+
+1. Having to redownload nixpkgs is a bit much
+2. If your package is marked unfree or insecure and you allowed it explicitly in your nix config previously, that exception won't apply here.
+3. Overlays will not be applied
+
+## Setting up a Flake Alias
+
+To fix this, we can expose the instance of `nixpkgs` that we make in `flake.nix` to the `nix` CLI.
+
+<Steps>
+1. Add a new output in `flake.nix` for `legacyPackages`
+    ```nix title="flake.nix" ins={4}
+    outputs = inputs @ {
+        ...
+    }: ... {
+        legacyPackages.${system} = pkgs;
+    }
+    ```
+2. In your nix configuration, add an entry to the flake registry
+    ```nix title="nix.nix" /"(p)"/ ins=" inputs," ins={4}
+    {pkgs, inputs, ...}: {
+        nix = {
+            # ...
+            registry."p".flake = inputs.self;
+        };
+    }
+    ```
+    I use `p` here as that's what I use in my config, you can change this to any string (I recommend a short one).
+3. Rebuild and switch
+</Steps>
+
+Now, whenever you want to run/shell a package, use `p` (or whatever alias you set up) instead of `nixpkgs`.
+
+```sh
+nix run p#python3
+```
+
+This will use the instance of nixpkgs that your flake exports, with all of your config and overlays applied!

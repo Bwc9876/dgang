@@ -295,7 +295,7 @@ This is similar to what we did with `nixpkgs#python3` above. Instead of `nixpkgs
 
 Press enter and wait for the VM to start! Use the username and password you configured above to login.
 
-> TODO: Gif(?) of VM launching and logging in with test user
+![Booting and testing the NixOS VM](../../../assets/vm-initial.png)
 
 We've now successfully started a NixOS VM! 
 
@@ -374,7 +374,7 @@ Now for the fun stuff! Let's try adding a DE to the system.
   # ...
 
   services.xserver.enable = true;
-  services.desktopManager.xfce.enable = true;
+  services.xserver.desktopManager.xfce.enable = true;
 }
 ```
 
@@ -382,7 +382,7 @@ Adding a DE is as simple as this! Opposed to installing a package we simply *ena
 
 We'll get into how we can find more options and add packages there aren't explicit options for later. For now, try running the VM again and check out XFCE.
 
-> TODO: Image - XFCE greeter(?) showing test user
+![The XFCE greeter on the NixOS VM](../../../assets/vm-with-de.png)
 
 ### Configuring Nix with Nix
 
@@ -449,6 +449,8 @@ I can see that there's an option, [programs.firefox.enable](https://search.nixos
 
 When building my system, Nix will fetch the `firefox` package from `nixpkgs` for me and configure any other OS setting that might make using Firefox better (like setting it as a default browser).
 
+![Firefox on the NixOS VM](../../../assets/firefox.png)
+
 ### Method 2: Using Nixpkgs Directly
 
 If we can't find our program through NixOS options search, that means there's no NixOS options that can install and configure the application for us.
@@ -483,6 +485,10 @@ To add `neofetch` to my system without having an option for it, I can use `envir
 <Aside>
 The `with` keyword is a handy way to bring all attributes of `pkgs` into scope, so instead of having to do `pkgs.neofetch`, I can just do `neofetch`.
 </Aside>
+
+We now have neofetch installed!
+
+![Neofetch on the NixOS VM](../../../assets/neofetch.png)
 
 ## Experiment
 
