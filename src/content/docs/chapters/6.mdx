@@ -144,23 +144,32 @@ So instead we're going to leverage yet another amazing NixOS feature to generate
 
 To start off you'll need a new `nixosConfigurations` output in `flake.nix`. You can call this something like `iso`. This should be effectively a copy of your main NixOS config, except for `modules`.
 
-For `modules` set it to this list:
-
-```nix title=flake.nix
-modules = [
-  "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix" # I'll explain this in a sec
-  ./modules/nix.nix # We want certain Nix features when installing
-  ./iso/iso.nix # Suggested path, change as wanted
-];
+```nix title="flake.nix" /nixosConfigurations.(iso)/ ins={7-14}
+outputs = inputs @ {
+  self,
+  nixpkgs,
+  # ...
+}: ... {
+  # ...
+  nixosConfigurations.iso = nixpkgs.lib.nixosSystem {
+    inherit system pkgs;
+    specialArgs = [ inputs ];
+    modules = [
+      "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix" # I'll explain this in a sec
+      ./modules/nix.nix # We want certain Nix features when installing
+      ./iso.nix # Suggested path, we'll make this in a sec, change as wanted
+    ];
+  };
+}
 ```
 
-The first item we have is a reference to a module within `nixpkgs`. This modules is actually what the official installer is also based on, we'll use it to let us create an ISO of this NixOS image.
+The first item we have is a reference to a module within `nixpkgs`. This module is actually what the official installer is also based on, we'll use it to let us create an ISO of this NixOS image.
 
 ### Configuring the ISO
 
-Now open `./iso/iso.nix` (or wherever you wish to place the ISO NixOS module), and fill out the boilerplate:
+Now open `./iso.nix` (or wherever you wish to place the ISO NixOS module), and fill out the boilerplate:
 
-```nix title=iso/iso.nix
+```nix title=iso.nix
 {pkgs, ...}: {
 
 }
@@ -168,7 +177,7 @@ Now open `./iso/iso.nix` (or wherever you wish to place the ISO NixOS module), a
 
 In here we'll need some basic setup for our image:
 
-```nix title=iso/iso.nix ins={2-6}
+```nix title=iso.nix ins={2-6}
 {pkgs, ...}: {
   environment.systemPackages = with pkgs; [
     gptfdisk # For partitioning disks
@@ -180,7 +189,7 @@ In here we'll need some basic setup for our image:
 
 Now we're going to include our own flake inside the installer image. To do this we can use the special input `self` that we're passing via `specialArgs`.
 
-```nix ins=inputs, ins={7-8}
+```nix title=iso.nix ins="inputs, " ins={7-8}
 {inputs, pkgs, ...}: {
   environment.systemPackages = with pkgs; [
     gptfdisk # For partitioning disks
@@ -229,9 +238,9 @@ sudo dd if=/home/user/my-nixos-system/result/iso/nixos.iso of=/dev/sdX bs=4096 s
 
 This will copy the image in `4096`-byte blocks to the flash drive, wait for the copying to fully finish.
 
-After copying the drive may re-mount depending on your system, eject the flashdrive and then unplug it.
+After copying, the drive may re-mount depending on your system, eject the flashdrive and then unplug it.
 
-We now have out very own custom installation ISO!
+We now have our very own custom installation ISO!
 
 ## Final Prep
 

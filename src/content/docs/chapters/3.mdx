@@ -107,6 +107,14 @@ This will tell home manager your username and where your home folder is.
 <Aside>
 You can split up home manager modules similar to NixOS modules, using the `imports` option.
 
+<FileTree>
+- flake.nix
+- flake.lock
+- home/
+  - home.nix
+  - **some-hm-module.nix**
+</FileTree>
+
 ```nix title=home/home.nix ins={2} "./some-hm-module.nix"
 {pkgs, ...}: {
     imports = [ ./some-hm-module.nix ];

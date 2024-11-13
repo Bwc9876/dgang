@@ -11,15 +11,13 @@ In this chapter we will...
 
 1. Install Nix on your current distro
 2. Go over using the basic parts of the Nix CLI
-3. Set up a basic NixOS VM with Nix itself
-4. Go over the basics of configuring and installing on a NixOS system
-
-Ready?
+3. Set up a basic NixOS VM with Nix
+4. Go over the basics of configuring a NixOS system
 
 ## Installing Nix (Lix)
 
 Before we even start with NixOS, we're going to use `Nix` to build a VM we can use to test with.
-This VM will eventually be the system you'll install
+This VM will eventually be the system you'll install.
 
 We'll *actually* be using a fork of Nix called Lix. This fork fixes some common bugs and turns on some features we'll be using by default.
 
@@ -27,11 +25,19 @@ To install Lix, follow [the Lix installation guide](https://lix.systems/install/
 
 <LinkCard target="_blank" title="Lix Installation Guide" href="https://lix.systems/install/#on-any-other-linuxmacos-system" />
 
-After installing check that you can run Nix by running `nix --version`.
+```sh
+curl -sSf -L https://install.lix.systems/lix | sh -s -- install
+```
+
+After installing, check that you can run Nix.
+
+```sh
+nix --version
+```
 
 ## Basic Nix CLI
 
-Nix is a package manager that can run on many systems. One of the nice things it can do is run a package without needing to install it. For example:
+Nix is a package manager that can run on many systems. One of the nice things it can do is run a package without needing to install it.
 
 ```sh
 nix run "nixpkgs#python3"
@@ -41,6 +47,7 @@ We can run Python!
 
 ```sh
 nix shell "nixpkgs#python3"
+python --version
 ```
 
 And we can run a shell with Python in scope!
@@ -52,7 +59,9 @@ like this!
 
 ## Creating a NixOS VM with Nix
 
-To start out make a new folder to contain this project. I'd recommend somewhere easy to access via terminal. In this new folder initialize a new Nix flake.
+Now let's get into creating a NixOS VM. This VM will eventually become the system you install on your actual device.
+
+To start out make a new folder to contain this project. In this new folder initialize a new Nix flake.
 
 ```sh
 nix flake init
@@ -84,30 +93,51 @@ A flake is like a Nix "project". It's written as *nix expression*, specifically 
 Opening the `flake.nix` we can see this expression. Let's walk through what each part means.
 
 <Steps>
-1. We have an attribute named `description` that's a string
-2. We have another attribute called `inputs` that's another attr set. 
+1. We have an attribute named `description` that's a string.
+2. We have another attribute called `inputs` that's an attr set. 
    This attr set contains an attribute named `nixpkgs` which is another attr set.
-   Within this `nixpkgs` attr set we set `url` to `github:nixos/nixpkgs?ref=nixos-unstable`
-3. We have a final attribute named `outputs` that's a *function*.
-   This function takes `self`, which is a reference to this flake, and `nixpkgs` which is the input we defined in `inputs`.
+   Within that we set `url` to `github:nixos/nixpkgs?ref=nixos-unstable`.
+   <Aside>
+    When you see this syntax
+    ```nix "nixpkgs.url = "
+    {
+      inputs = {
+        nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+      };
+    }
+    ```
+    It is directly equivalent to
+    ```nix /(nixpkgs) =/ "url = "
+    {
+      inputs = { 
+        nixpkgs = {
+          url = "github:nixos/nixpkgs?ref=nixos-unstable";
+        };
+      };
+    }
+    ```
+    Nix provides the `.` notation as a shorthand way to define nested attr sets.
+    </Aside>
+3. We have one more attribute named `outputs` that's a *function*.
+   This function takes `self`, which is a reference to this flake, and `nixpkgs`, which is the input we defined in `inputs`.
 4. Within this function we return two *packages* (placed in the `packages.x86_64-linux` attr set).
    We set `hello` equal to an example package in `nixpkgs` and we set default to a recursive reference to our own `hello` package.
 </Steps>
 
-This is the basic structure of a flake. We have `inputs`, which define dependencies for or flake. And we have `outputs`, which is a function that can be passed the inputs we defined to output *something*. 
+This is the basic structure of a flake. We have `inputs`, which define dependencies for or flake. And we have `outputs`, which is a function that can be passed those inputs to output *something*. 
 
 This "something" could be packages (As it is now), NixOS configurations (as we'll do in a bit), and much more. Flakes are a general purpose way to share Nix code between projects. The `nixpkgs` input we're defining is actually another flake located at [https://github.com/NixOS/nixpkgs/blob/nixos-unstable/flake.nix](https://github.com/NixOS/nixpkgs/blob/nixos-unstable/flake.nix).
-
-<Aside title="Editor Recommendation">
-I'd recommend grabbing `bbenoist.Nix` for VSCode for editing Nix files.
-</Aside>
 
 ### Setting Up Flake.nix
 
 We're going to need to make a few changes to `flake.nix` to prepare to add a NixOS config.
 
+<Aside title="Editor Recommendation">
+I'd recommend grabbing `bbenoist.Nix` for VSCode for editing Nix files.
+</Aside>
+
 <Steps>
-1. Remove the current template lines that output `hello`
+1. Remove the template lines that output `hello` and `default`.
     ```nix title="flake.nix" del={9-10}
     {
       description = "A very basic flake";
@@ -122,7 +152,7 @@ We're going to need to make a few changes to `flake.nix` to prepare to add a Nix
       };
     }
     ```
-2. Create a `let` statement before our return in `outputs`
+2. Create a `let` statement before our return in `outputs`.
     ```nix title="flake.nix" ins=" let" ins="in " ins={12}
     {
       description = "A very basic flake";
@@ -140,7 +170,9 @@ We're going to need to make a few changes to `flake.nix` to prepare to add a Nix
       };
     }
     ```
+    <Aside>
     A `let` block allows us to define variables we want to use in the expression after `in`.
+    </Aside>
 3. Add `system` to the let block, we want this to be `x86_64-linux` as that's the system we'll make a VM for.  
     ```nix title="flake.nix" ins={12}
     {
@@ -194,13 +226,13 @@ With these changes we've:
 
 Now we'll define a *NixOS Config*. A NixOS config is a nix expression that represents a system. This configures everything from the bootloader and kernel to the DE the system will run.
 
-We want our flake to export this expression so we can use it in the Nix CLI.
+We'll make our flake export this NixOS config, allowing us to use it with the Nix CLI.
 
 These steps will use the string `YOURNAMEHERE` to represent your system's name, you can set this to whatever you want, I'd recommend a `kebab-case` string.
 
 <Steps>
 1. First we'll add the output. Note that the start of the flake file isn't included here for brevity
-    ```nix title="flake.nix" "YOURNAME" ins={10-12}
+    ```nix title="flake.nix" "YOURNAME" ins={11-13}
     { 
       outputs = { 
         self, 

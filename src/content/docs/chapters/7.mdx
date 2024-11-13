@@ -51,27 +51,27 @@ In this TUI you'll need to do a few things:
    3. For hex code enter `ef00`, this marks it as a EFI boot partition
    4. Name this `BOOT` or whatever you want
    </Steps>
-3. Next you can optionally set swap memory, if you do set this I'd recommend making it the size of physical memory you have
+3. Next you can optionally set swap memory, if you do set this I'd recommend making it the size of physical memory you have.
    <Steps>
-   1. New partition
+   1. New partition (below the boot partition)
    2. Press Enter
-   3. Enter the size you desire for the swap partition.
+   3. Enter the size you desire for the swap partition. (e.g. `4G` for 4 GB)
    4. For hex code enter `8200` for "Linux Swap"
    5. Name this `SWAP` or whatever you want
    </Steps>
 4. Finally allocate the rest of the disk space to your actual system
    <Steps>
-   1. New partition
+   1. New partition (below the other partitions)
    2. Press enter
    3. For size simply press enter, this will make it go to the end of the disk
    4. For hex code press enter (`8300`), for a Linux filesystem
    5. You can name this `NIXOS` or whatever you want
    </Steps>
-5. Finally select `[Write]` at the bottom, this will commit all changes to the disk
-6. Quit
+5. Your `cgdisk` should look something like this
+   ![cgdisk screen showing disk layout](../../../assets/cgdisk.png)
+6. Finally select `[Write]` at the bottom, this will commit all changes to the disk
+7. Quit
 </Steps>
-
-![cgdisk screen showing disk layout](../../../assets/cgdisk.png)
 
 Now we need to create filesystems on the new partitions we made.
 
@@ -128,7 +128,7 @@ Our disks are now mounted for setup!
 
 ## Getting Our Flake
 
-Almost ready now. But first, we'll copy our system flake to this directory.
+Almost ready now. But first, we'll copy our system flake to our newly mounted drive.
 
 <Steps>
 1. Make the folder to store the flake in
@@ -157,13 +157,15 @@ The layout of `/mnt` should now look like
 
 ## Adding our Hardware Config
 
-Now we need to add hardware-specific modules to our NixOS config for this computer.
+Now we need to add a hardware-specific module to our NixOS config for this computer.
 
 ```sh
 sudo nixos-generate-config --root /mnt --show-hardware-config > /mnt/flake/hardware-configuration.nix
 ```
 
 This will generate hardware-specific config for your system. Take a look at it with `cat` to see what it does.
+
+This file is mostly just pointing NixOS to the proper disk partitions, but depending on your hardware it may also set some options.
 
 <FileTree>
 - /mnt/flake
@@ -187,6 +189,8 @@ Now check one more time to make sure the system's okay.
 ```sh
 nix flake check
 ```
+
+If the flake check passed then we should be good to go!
 
 ## Installing
 
@@ -221,32 +225,43 @@ Finally
 sudo reboot
 ```
 
+Your system will then reboot! Take out your installation medium now.
+
 ## First Boot
 
 After rebooting the system should go into a menu with `NixOS` and `Reboot into firmware interface`. We want `NixOS`.
 
-The system should initialize and reach some sort of greeter (`tuigreet`, `SDDM`, `GDM`, etc depending on what you set up). 
+The system should initialize and reach some sort of greeter (`logind`, `tuigreet`, `SDDM`, `GDM`, etc depending on what you set up). 
 
 Before attempting to login (you can't, you don't have a password). We need to set your user password
 
 <Steps>
-   1. Switch TTYs with `Ctrl+Alt+F2`. (You may need to hold `Fn` as well on a laptop)
+   1. (*If you have a graphical greeter*): Switch TTYs with `Ctrl+Alt+F2`. (You may need to hold `Fn` as well on a laptop)
    2. Login as `root` with the password you setup in the installer
-   3. Run `passwd YOURNAME`, replacing `YOURNAME` with your normal user's name
+   3. Run `passwd` to change your user accounts password. Replacing `YOURUSER` with you user account's name.
+      ```sh "YOURUSER"
+      passwd YOURUSER
+      ```
    4. Enter the password you wish to use 
-   5. Logout with `exit` or press `Ctrl+D`
-   6. Switch back to TTY 1 with `Ctrl+Alt+F1`
+   5. Logout with `exit` (or press `Ctrl+D`)
+   6. (*If you have a graphical greeter*): Switch back to TTY 1 with `Ctrl+Alt+F1`
 </Steps>
 
 Now log in to your new system!
 
-After logging in I'd recommend grabbing your flake from `/flake` and copying it to somewhere in your home folder for editing. The flake will no longer have a git repo associated with it so you may need to re-run `git init`. Either way make sure to commit your new `hardware-configuration.nix` file and push if applicable.
+## Post-Install Config Housekeeping
+
+### Grabbing Our Flake Again
+
+After logging in I'd recommend grabbing your flake from `/flake` and copying it to somewhere in your home folder for editing. The flake will no longer have a git repo associated with it so you may need to re-run `git init`. 
+
+Either way make sure to commit your new `hardware-configuration.nix` file and push if applicable.
 
 You can remove `/flake` once you're done this.
 
-## Post-Install Config Housekeeping
+### Disable the QEMU Guest Agent
 
-First thing, we don't need QEMU guest agent anymore as we're on the read deal now
+We don't need QEMU guest agent anymore as we're on the read deal now.
 
 ```nix title=config.nix del={2}
 # ...
@@ -267,6 +282,8 @@ run-vm:
     nix run .#nixosConfigurations.test.config.system.build.vm
 ```
 
+### Organizing hardware-configuration.nix
+
 Finally, we placed `hardware-configuration.nix` in the root of the repo for simplicity, but feel free to move it to wherever you like (maybe make a folder for different hardware configs and name it your system name).
 
 <FileTree>
@@ -279,7 +296,7 @@ Finally, we placed `hardware-configuration.nix` in the root of the repo for simp
   - ...
 </FileTree>
 
-<Aside>
+<Aside type="caution">
 Just make sure to update the reference to it in `flake.nix`!
 
 ```nix title=flake.nix "YOURNAME" ins={5} del={4}
@@ -349,7 +366,7 @@ Note that these do two different things and should both be run. You can also use
 
 When booting, `systemd-boot` will display all previous NixOS generations, you can select one to boot from. This is very handy if you mess up your most recent config to be unbootable. With NixOS as long as you don't mess up your bootloader you can usually recover easily.
 
-> TODO: IMAGE OF systemd-boot with previous generations
+![Previous generations are available to select in systemd-boot](../../../assets/generations.png)
 
 Also remember that you have a git repo to track your config, you can always rollback to a previous commit if needed.
 

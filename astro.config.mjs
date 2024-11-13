@@ -35,5 +35,5 @@ export default defineConfig({
         customCss: [
             "./src/styles/theme.css"
         ]
-    }), d2({theme: {default: '8', dark: "200"}})],
+    }), d2({theme: {default: '8', dark: "8"}})],
 });
