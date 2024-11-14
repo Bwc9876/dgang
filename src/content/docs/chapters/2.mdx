@@ -11,21 +11,21 @@ In this chapter we will...
 
 1. Get a Git repo set up for our system
 2. Learn how to compartmentalize our config into different files
-3. Do some setup for next chapter in `flake.nix`
+3. Do some setup for later chapters in `flake.nix`
 4. Setup auto-formatting for our code
 
 ## Setting Up Git
 
-Before we do anything, we'll need to make a `.gitignore`, I'd recommend the following:
+Before we do anything, we'll need to make a `.gitignore`.
 
 <Steps>
-1. Create a `.gitignore` file to prevent unwanted files from being checked in
+1. Create a `.gitignore` file to prevent unwanted files from being checked-in to VCS.
     <FileTree>
     - flake.nix
     - **.gitignore** Make sure it's in the root!
     - ...
     </FileTree>
-
+    I'd recommend this as a `.gitignore`.
     ```txt title=".gitignore"
     # Symlink to anything nix built (no trailing slash)
     result 
@@ -52,7 +52,7 @@ If you ever get an error saying a file in the config could not be found, this is
 
 ## Fragmenting Our Config
 
-Now we need to split up our NixOS config from one file, this is for our own good and we'll actually use it later.
+Now we need to split up our NixOS config from one file, this will make it easier to find where we set options as they'll be categorized.
 
 First, create files for each part of our config.
 
@@ -71,14 +71,28 @@ Anything highlighted is something this guide is going to use later, so they'll b
   - ... Go wild!
 </FileTree>
 
-Now you'll need to edit the path specified in `flake.nix` in the `modules` array to point to `./modules/config.nix` instead.
-
 <Aside type="tip" title="Pop Quiz!">We just made files! What do we do to make sure Nix can see them?</Aside>
+
+You'll also need to edit the path specified in `flake.nix` within the `modules` array to point to `./modules/config.nix` instead.
+
+```nix title="flake.nix" "YOURNAME" ins="/modules"
+{
+  # ...
+  nixosConfigurations.YOURNAME = nixpkgs.lib.nixosSystem {
+    # ...
+    modules = [
+      ./modules/config.nix
+    ];
+  };
+}
+```
 
 ### Importing other modules from config.nix
 
-Now we need to tell NixOS what other files to look at for modules.
+Now we need to tell NixOS what other files to load modules from.
+
 To do this, in `config.nix` create a new array called `imports` (usually this is the very first config option).
+
 This array should have the paths (relative to `config.nix`) of other modules to load.
 
 ```nix title="modules/config.nix" ins={2}
@@ -91,8 +105,7 @@ This array should have the paths (relative to `config.nix`) of other modules to 
 
 ### File Contents
 
-Now the files we created need to actually be filled, use config.nix as reference, remember each module must return
-an attr set and are given a bunch of arguments. A good template for a module is:
+Now fill in the modules we've created, use config.nix as reference, remember each module must return an attr set and are given a bunch of arguments. Here's a good template for modules.
 
 ```nix title="modules/some-module.nix"
 {pkgs, ...}: {
@@ -100,21 +113,20 @@ an attr set and are given a bunch of arguments. A good template for a module is:
 }
 ```
 
-From there feel free to build your source tree however you want!
+From there feel free to organize your source tree however you want!
 
 <Aside type="tip">
 Remember that Nix/NixOS merges a lot of stuff! For example you can define `environment.systemPackages` in multiple files and it will aggregate all the items into one big array.
 
-If two things in different modules collide Nix will fail to evaluate and let you know.
+If two things in different modules collide, Nix will fail to evaluate and let you know.
 </Aside>
 
 ### Making nix.nix
 
-I'll leave exactly where to place certain options up to you, however this guide is going to require you to place
-the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from somewhere else later.
+I'll leave exactly where to place certain options up to you, however this guide is going to require you to place the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from somewhere else later.
 
 <Steps>
-1. Remove the `nix` attr set from `modules/config.nix`...
+1. Remove the `nix` attr set from `modules/config.nix`.
     ```nix title="modules/config.nix" del={3-17}
     {pkgs, ...}: {
       # ...
@@ -136,8 +148,7 @@ the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from 
       # ...
     }
     ```
-
-2. Then add it in `modules/nix.nix`...
+2. Then add the attr set in `modules/nix.nix`.
     ```nix title="modules/nix.nix" ins={2-16}
     {pkgs, ...}: {
       nix = {
@@ -159,19 +170,29 @@ the `nix = { ... }` option inside `modules/nix.nix`, we'll be importing it from 
     ```
 </Steps>
 
-### Try Building
-
+<Aside title="Try Building">
 Before continuing, make sure your config still builds and your VM is how you want it.
+</Aside>
 
 ## Passing inputs to our configuration
 
 So when I said there were only two methods to install software I kinda lied...
 
-Nix flakes are a wonderful way to get software straight from the repo the software is hosted on. We can
-see in our `flake.nix` we're grabbing `nixpkgs` from github, and since NixOS expects nix packages we have it already
-within our NixOS configuration.
+Nix flakes are a wonderful way to get software straight from the repo the software is hosted on. We can see in our `flake.nix` that we're grabbing `nixpkgs` from GitHub. 
 
-However, there may come a time that we need to access other inputs within our configuration. In order to do this we need to tell NixOS additional arguments to pass.
+```nix title="flake.nix" {3}
+{
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+  };
+
+  # ...
+}
+```
+
+Since NixOS uses nixpkgs already, it's already passed to us as an argument in modules. However, there may come a time that we need to access other inputs within our configuration. 
+
+In order to do this we have to tell NixOS additional arguments we want passed to modules.
 
 <Steps>
 1. On the line with `outputs = {`, put `inputs @` right before the `{`.
@@ -195,20 +216,20 @@ However, there may come a time that we need to access other inputs within our co
 3. Now when we need to, we can specify `inputs` in our arguments on any module and have access to our flake inputs.
     ```nix title="modules/some-module.nix" ins="inputs, "
     {inputs, pkgs, ...}: {
-      # Access to flake inputs!
+      # Access to flake inputs! Yay!
     }
     ```
 </Steps>
 
-Our only inputs at the moment are `self` and `nixpkgs`, but as we add more this will come in handy.
+This may not help much as our only inputs at the moment are `self` and `nixpkgs`, but as we add more this will come in handy.
 
 ## Auto-formatting
 
 This step is optional but I'd recommend it if you're like me and enjoy consistent style in your code.
-Another type of output a nix flake can provide is a `formatter`. This should be set to a package that has the ability to
-format Nix code, I'll use `alejandra` in this example.
 
-To setup a formatter simply add to the outputs attr set:
+Another type of output a nix flake can provide is a `formatter`. This should be set to a package that has the ability to format Nix code, I'll use `alejandra` (my personal preference) in this example.
+
+To setup a formatter simply add it as an output to our flake.
 
 ```nix title="flake.nix" ins={5}
 outputs = inputs @ {

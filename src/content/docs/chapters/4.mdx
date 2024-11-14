@@ -3,7 +3,7 @@ title: Chapter 4 - Helpful Utilities
 description: A set of helpful utilities to know about and use with nix/NixOS
 ---
 
-import { Steps, Aside } from "@astrojs/starlight/components";
+import { Steps, Aside, FileTree } from "@astrojs/starlight/components";
 
 Real quick we're going to go over setting up and using some utilities.
 
@@ -28,9 +28,9 @@ environment.systemPackages = with pkgs; [
 
 From there whenever we use `nix build` we can replace the `nix` with `nom` and it will build with better output.
 
-```sh ins=nom del=nix
-nix build
-nom build
+```sh ins=nom del=nix ".#"
+nix build .#
+nom build .#
 ```
 
 To install `nom` on your host system we can make use of nix profiles. These are generally frowned upon when being used in NixOS system but for your host system it's a nice feature.
@@ -41,7 +41,7 @@ nix profile install nixpkgs#nix-output-monitor
 
 ## Just
 
-Just is a very simple command-line runner that we can use to make project-specific shortcuts. All commands are stored in a `justfile` which will be scanned when running `just`. 
+Just is a very simple command-line runner that we can use to make project-specific shortcuts. All commands are stored in a `justfile` which will be read from the CWD when running `just`. 
 
 Here's the justfile I recommend for your config. Replace `YOURNAME` with the name of your system config.
 
@@ -88,9 +88,16 @@ run-vm:
     nix run .#nixosConfigurations.YOURNAME.config.system.build.vm
 ```
 
+<FileTree>
+- flake.nix
+- flake.lock
+- **justfile** Notice no file extension
+- ...
+</FileTree>
+
 ### Installing Just
 
-Similar to `nix-output-monitor`, just add `just` to your `environment.systemPackages`
+Similar to `nix-output-monitor`, just add `just` to your `environment.systemPackages`.
 
 ```nix title=config.nix ins={4}
 environment.systemPackages = with pkgs; [
@@ -100,7 +107,7 @@ environment.systemPackages = with pkgs; [
 ];
 ```
 
-...and install it on your host distro with nix profiles
+And install it on your host distro with nix profiles.
 
 ```sh
 nix profile install nixpkgs#just
@@ -139,21 +146,19 @@ Adding Comma is not as simple as `just` or `nom`.
          nixpkgs,
          home-manager,
          nix-index-database
-      }: {  
+      }: ... {  
          # ...
       };
    }
    ```
-
 2. Now, we're going to add an *overlay* to our nixpkgs instance from `nix-index-database`. <br/>An overlay is another kind of flake output that edits nixpkgs in some way, this could be adding packages (what it'll do in our case), or it could even edit existing packages.<br/><br/>
-   To add an overlay, below the `inherit system;` line when we `import` nixpkgs. We'll add a new array called `overlays`. Then add the item `nix-index-database.overlays.nix-index`. This will add the required packages we want into our instance of `nixpkgs`.
+   To add an overlay, below the `inherit system;` line when we `import` nixpkgs. We'll add a new array called `overlays`, then add the item `nix-index-database.overlays.nix-index`. This will add the packages we want into our instance of `nixpkgs`.
    ```nix title=flake.nix ins={3}
    pkgs = import nixpkgs {
       inherit system;
       overlays = [nix-index-database.overlays.nix-index];
    };
    ```
-
 3. Now all we need to do is add the `comma-with-db` package to `environment.systemPackages`.
    ```nix title=config.nix ins={3}
    environment.systemPackages = with pkgs; [
@@ -165,7 +170,7 @@ Adding Comma is not as simple as `just` or `nom`.
 
 ### Using Comma
 
-To test comma, start up your VM, open a terminal and run
+To test comma, start up your VM and try to run `cowsay`.
 
 ```sh
 cowsay Hello
@@ -199,7 +204,7 @@ Houston, we have cow! With comma you have access to any command in nixpkgs with 
 <Aside>
 If you run comma again, it won't prompt you for which package to use. Comma remembers your choice.
 
-To clear this choice, use
+To clear this choice, use the `-e` flag.
 
 ```sh
 , -e

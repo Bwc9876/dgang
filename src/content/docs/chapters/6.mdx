@@ -63,7 +63,7 @@ Take a look at the repo and see if your computer's model is there as a `.nix` fi
     {
       inputs = {
         # ...
-        nixos-hardware.url = "github:NixOS/nixos-hardware"; # No nixpkgs input, don't need to override
+        nixos-hardware.url = "github:NixOS/nixos-hardware"; # No nixpkgs input, don't need to override.
       };
 
       outputs = inputs @ {
@@ -75,7 +75,7 @@ Take a look at the repo and see if your computer's model is there as a `.nix` fi
       }: {} # ...
     }
     ```
-2. Add your computer's module to `modules` (I'll add the Lenovo ThinkPad T430 as an example)
+2. Add your computer's module to `modules` (I'll add the Lenovo ThinkPad T430 as an example).
     ```nix title=flake.nix "YOURNAME" "lenovo-thinkpad-t430" ins={6}
     nixosConfigurations.YOURNAME = nixpkgs.lib.nixosSystem {
       # ...
@@ -96,9 +96,11 @@ Your config should now be tweaked to work well with your hardware configuration.
 ### Nvidia Note
 
 <Aside type="caution">
-If you're using Nvidia, you may need unfree packages to run NixOS
+If you're using Nvidia, you may need unfree packages to run NixOS.
 
-To allow Nix to fetch unfree packages, add a `config` to our instantiation of `nixpkgs`
+To allow Nix to fetch unfree packages, set the `config.allowUnfree` option in our instantiation of `nixpkgs`.
+
+These packages aren't actually paid or anything, they just have licensing issues.
 
 ```nix title="flake.nix" ins={5}
 let 
@@ -128,7 +130,7 @@ Finally, we'll run a check to make sure the system is sound.
 nix flake check
 ```
 
-Finally finally, make sure to commit for good measure.
+Finally finally, make sure to commit again for good measure.
 
 ## Creating an Installation ISO
 
@@ -163,11 +165,11 @@ outputs = inputs @ {
 }
 ```
 
-The first item we have is a reference to a module within `nixpkgs`. This module is actually what the official installer is also based on, we'll use it to let us create an ISO of this NixOS image.
+The first item we have is a reference to a module within `nixpkgs`. This module is what the official installer is also based on, we'll use it to let us create an ISO of this NixOS config.
 
 ### Configuring the ISO
 
-Now open `./iso.nix` (or wherever you wish to place the ISO NixOS module), and fill out the boilerplate:
+Now open `./iso.nix` (or wherever you wish to place the ISO NixOS module), and fill out the boilerplate.
 
 ```nix title=iso.nix
 {pkgs, ...}: {
@@ -175,7 +177,7 @@ Now open `./iso.nix` (or wherever you wish to place the ISO NixOS module), and f
 }
 ```
 
-In here we'll need some basic setup for our image:
+In here we'll need some basic setup for our disk image.
 
 ```nix title=iso.nix ins={2-6}
 {pkgs, ...}: {
@@ -187,7 +189,7 @@ In here we'll need some basic setup for our image:
 }
 ```
 
-Now we're going to include our own flake inside the installer image. To do this we can use the special input `self` that we're passing via `specialArgs`.
+Now we're going to include our own flake within the installer image. To do this we can use the special input `self`, which is a reference to our own flake.
 
 ```nix title=iso.nix ins="inputs, " ins={7-8}
 {inputs, pkgs, ...}: {
@@ -201,9 +203,7 @@ Now we're going to include our own flake inside the installer image. To do this 
 }
 ```
 
-Add this to your module, make sure to add `inputs` to the arguments it's taking as well.
-
-What this does is configure a symlink in `etc` called `flake` (put in quotes here to help get across that this can be any arbitrary string, you don't need the quotes). We're setting the source of this link to `inputs.self`. Which will tell Nix to make a copy of our Flake and place it in the Nix store, then return the store path.
+This configures a symlink in `etc` called `flake` (put in quotes here to help get across that this can be any arbitrary string, you don't need the quotes). We're setting the source of this link to `inputs.self`. Which will tell Nix to make a copy of our Flake and place it in the Nix store, then return the store path.
 
 By doing this we're exposing the flake within the installer, we'll use this to build the full system when installing.
 
@@ -217,7 +217,7 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 
 <Aside>If you changed the name of your installer config, change `iso` here</Aside>
 
-After a few minutes of building and minifying, the command should complete. In `./result/iso` you should see your installed image generated! Now it's time to flash it.
+After a few minutes of building and compressing, the command should complete. In `./result/iso` you should see your installed image generated! Now it's time to flash it.
 
 ## Flashing to a Thumbdrive
 

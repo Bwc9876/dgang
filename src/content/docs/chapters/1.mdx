@@ -5,7 +5,7 @@ description: A first look into nix and NixOS, create a VM to experiment in
 
 import { Aside, Steps, FileTree, LinkCard } from "@astrojs/starlight/components";
 
-Welcome! This chapter will start you off on your journey with Nix/NixOS!
+Welcome! This chapter will start you off on your journey with Nix/NixOS.
 
 In this chapter we will...
 
@@ -54,8 +54,7 @@ And we can run a shell with Python in scope!
 
 Here we're asking for `python3` from `nixpkgs` (the primary package repository). In the first command we simply run the package's default binary. In the second we bring the package into scope, meaning we can execute any commands it provides.
 
-We'll get into more later, just keep in mind we can run any package in [nixpkgs](https://search.nixos.org/packages?channel=unstable&size=500)
-like this!
+We'll get into more later, just keep in mind we can run any package in [nixpkgs](https://search.nixos.org/packages?channel=unstable&size=500) like this!
 
 ## Creating a NixOS VM with Nix
 
@@ -228,12 +227,14 @@ Now we'll define a *NixOS Config*. A NixOS config is a nix expression that repre
 
 We'll make our flake export this NixOS config, allowing us to use it with the Nix CLI.
 
-These steps will use the string `YOURNAMEHERE` to represent your system's name, you can set this to whatever you want, I'd recommend a `kebab-case` string.
+These steps will use the string `YOURNAME` to represent your system's name, you can set this to whatever you want, I'd recommend a `kebab-case` string.
 
 <Steps>
-1. First we'll add the output. Note that the start of the flake file isn't included here for brevity
+1. First we'll add the output. Note that the start of the flake file isn't included here for brevity.
     ```nix title="flake.nix" "YOURNAME" ins={11-13}
     { 
+      # ...
+
       outputs = { 
         self, 
         nixpkgs 
@@ -250,7 +251,7 @@ These steps will use the string `YOURNAMEHERE` to represent your system's name, 
     }
     ```
     Here we're making a *function call* to `nixpkgs.lib.nixosSystem`, we're passing an attr set as an argument.
-2. In this attr set, add a basic system configuration. We'll go over what it means in a sec
+2. In this attr set, add a basic system configuration. We'll go over what it means in a sec.
     ```nix title="flake.nix" "YOURNAME" ins={12-15}
     { 
       outputs = { 
@@ -292,10 +293,11 @@ These steps will use the string `YOURNAMEHERE` to represent your system's name, 
       };
     }
     ```
-    Big config here, let's break it down
-    1. `system.stateVersion` sets the *major* version of NixOS to use
+    Big config here, let's break it down.
+
+    1. `system.stateVersion` sets the *major* version of NixOS to use.
     2. `users.users.YOURUSER` configures your account to be a normal user, sets your password to `asdf`, and makes you a sudoer.
-    3. `services.qemuGuest.enable` enables some features that'll make the VM nicer to use
+    3. `services.qemuGuest.enable` enables some features that'll make the VM nicer to use.
 </Steps>
 
 <Aside>
@@ -306,7 +308,7 @@ We now have a very basic config set up, let's boot it!
 
 ## Running The VM
 
-We have now configured a basic NixOS VM! Given just that expression we've represented a minimal NixOS system with one user.
+We have now configured a basic NixOS VM! With that small Nix expression we've represented a minimal NixOS system with one user.
 
 On an actual NixOS system we'd try to switch to this config, but we'll utilize a different NixOS feature to run a VM instead.
 
@@ -320,7 +322,7 @@ nix run .#nixosConfigurations.YOURNAME.config.system.build.vm
 
 This is similar to what we did with `nixpkgs#python3` above. Instead of `nixpkgs` we're grabbing from the flake in the current directory (`.`). And the package we want is `nixosConfigurations.YOURNAME.config.system.build.vm`.
 
-Press enter and wait for the VM to start! Use the username and password you configured above to login.
+Press enter and wait for the VM to start. Use the username and password you configured above to login.
 
 ![Booting and testing the NixOS VM](../../../assets/vm-initial.png)
 
@@ -328,9 +330,9 @@ We've now successfully started a NixOS VM!
 
 ## Separating Out Our Config
 
-Right now we're configuring everything within `flake.nix`. While this work it can get a bit messy to have *everything* in one file as you'll likely make *many* configuration changes.
+Right now we're configuring everything within `flake.nix`. While this works, it can get a bit messy to have *everything* in one file as you'll likely set *many* options.
 
-To fix this instead of defining our module inline we can separate it out to another nix file. 
+To fix this instead of defining our module inline we can separate it out into another nix file. 
 
 <Steps>
 1. Create a new file called `config.nix`.
@@ -340,13 +342,13 @@ To fix this instead of defining our module inline we can separate it out to anot
     - ...
     - **config.nix**
     </FileTree>
-2. In this file we'll put another Nix expression. But unlike `flake.nix` we'll make this expression a *function*.
+2. In this file we'll put another Nix expression. But unlike `flake.nix` (where the top-level expression is an attr set), we'll make this expression a *function*.
     ```nix title="config.nix"
     {pkgs, ...}: {
 
     }
     ```
-    Here we're defining a function that takes one argument, `pkgs` (our `nixpkgs` instance we imported before), and *ignores* all other arguments (NixOS will pass more, so we have to do this).
+    Here we're defining a function that takes one argument, `pkgs` (which is `nixpkgs`), and *ignores* all other arguments (NixOS passes many options to us, we want to only declare the ones we want).
 3. Now, we can move the code we previously had inline...
     ```nix title="flake.nix" "YOURNAME" "YOURUSER" "asdf" del={5-11} del="[{" del="}]"
     {
@@ -364,7 +366,7 @@ To fix this instead of defining our module inline we can separate it out to anot
       };
     }
     ```
-4. And move it over to `config.nix`
+4. And move it over to `config.nix`.
     ```nix title="config.nix" "YOURNAME" "YOURUSER" "asdf" ins={2-8}
     {pkgs, ...}: {
       system.stateVersion = "24.11";
@@ -376,7 +378,7 @@ To fix this instead of defining our module inline we can separate it out to anot
       services.qemuGuest.enable = true;
     }
     ```
-5. Finally, we need to tell NixOS about `config.nix`, we do this by putting it in `modules`
+5. Finally, we need to tell NixOS about `config.nix`, we do this by putting it in `modules`.
     ```nix title="flake.nix" "YOURNAME" ins="[./config.nix]"
     {
       nixosConfigurations.YOURNAME = nixpkgs.lib.nixosSystem {
@@ -386,7 +388,7 @@ To fix this instead of defining our module inline we can separate it out to anot
     }
     ```
     <Aside>
-    Note the lack of quotes around the path to `config.nix`. We'll get into exactly what this does later, just know it's not the same as passing *just* the path as a string
+    Note the lack of quotes around the path to `config.nix`. We'll get into exactly what this does later, just know it's not the same as passing *just* the path as a string.
     </Aside>
 </Steps>
 
@@ -395,6 +397,8 @@ Run `nix run` again to build and launch the VM again, make sure the system still
 ## Customization
 
 Now for the fun stuff! Let's try adding a DE to the system.
+
+I'll use XFCE here for simplicity, but feel free to change this later!
 
 ```nix title="config.nix" ins={4-5}
 {pkgs, ...}: {
@@ -405,7 +409,7 @@ Now for the fun stuff! Let's try adding a DE to the system.
 }
 ```
 
-Adding a DE is as simple as this! Opposed to installing a package we simply *enable* the one that we want.
+Adding a DE is as simple as this! Opposed to imperatively installing a package like with other distros, we declaratively *enable* the one that we want.
 
 We'll get into how we can find more options and add packages there aren't explicit options for later. For now, try running the VM again and check out XFCE.
 
@@ -440,30 +444,32 @@ Before we do anything else we're going to configure Nix within our system simila
 
 Big block here, let's go over what this all does.
 
-- First we disable channels, they're a different system usually used in place of flake, but we're going to use flakes so we don't need it
-- Then we set the underlying Nix implementation to be `lix`, just like on our host system.
-- Next in settings we enable a few options
-  - We enable a few experimental features, like flakes and the new CLI
-  - We enable nix store opimization
-- We configure garbage collection to run automatically once a week, we'll explain what `gc` is later
+- We disable channels, they're a different system usually used in place of flakes, but we're using flakes so we'll disable them.
+- We set the underlying Nix implementation to be `lix`, just like on our host system.
+- Next in settings we enable a few `nix` options.
+  - We enable a few experimental features, like flakes and the new CLI.
+  - We enable nix store opimization.
+- We configure garbage collection to run automatically once a week, we'll explain what garbage collection is later.
 
 ## Installing Programs
 
-When it comes to installing programs or enabling features, there are two methods you can use.
+When it comes to installing programs or enabling features, there are two (more later) methods you can use.
 
 ### Method 1: NixOS Options
 
-Many popular programs or features have NixOS options built-in, this is how we can simply do `services.desktopManager.xfce.enable = true`;
+Many popular programs or features have NixOS options built-in, this is how we can simply do `services.xserver.desktopManager.xfce.enable = true;`.
 
-In order to find options that we can set we can use the [NixOS Option Search](https://search.nixos.org/options?channel=unstable). This will show you options that NixOS provides.
+In order to find the options that we can set, we can use the [NixOS Option Search](https://search.nixos.org/options?channel=unstable). This will show you all the options that NixOS provides.
 
 <LinkCard target="_blank" title="NixOS Option Search" href="https://search.nixos.org/options?channel=unstable" />
 
-#### Example: Firefox
+#### Example: Adding Firefox
 
 Let's say I want to use Firefox on my system. To do this I first look up "firefox" on the option search. 
 
 I can see that there's an option, [programs.firefox.enable](https://search.nixos.org/options?channel=unstable&show=programs.firefox.enable&from=0&size=500&sort=relevance&type=packages&query=firefox).
+
+Because NixOS provides an option for this, all I have to do is add it to my config.
 
 ```nix title=config.nix ins={5} 
 {pkgs, ...}: {
@@ -482,21 +488,21 @@ When building my system, Nix will fetch the `firefox` package from `nixpkgs` for
 
 If we can't find our program through NixOS options search, that means there's no NixOS options that can install and configure the application for us.
 
-However, we can still use [Nix packages search](https://search.nixos.org/packages?channel=unstable&size=500) to see if the package we want is available at all.
+However, we can still use [Nix packages search](https://search.nixos.org/packages?channel=unstable&size=500) to see if the package we want is still available.
 
 <LinkCard target="_blank" title="Nix Package Search" href="https://search.nixos.org/packages?channel=unstable&size=500" />
 
 If it is available, you can add the package (gotten trough the `pkgs` attr set we receive as an arg) to `environment.systemPackages` to install it.
 
-This will install the package and add its commands to your `PATH`, but it may not configure other parts of the system to work well with it, you may need to do this manually.
+This will install the package and add its commands to your `PATH` (as well as add other things, like man pages). However it may not configure other parts of the system to work well with it, you may need to do this manually.
 
-#### Example: Neofetch
+#### Example: Installing Neofetch
 
-For example, I want to install `neofetch` on my system, however after checking for a NixOS option for it, it doesn't exist.
+Let's say I want to install `neofetch` on my system, however after checking for a NixOS option for it, it doesn't exist.
 
-But, after [searching in Nixpkgs](https://search.nixos.org/packages?channel=unstable&show=neofetch&from=0&size=500&sort=relevance&type=packages&query=neofetch), I can see it exists!
+But, after [searching in Nixpkgs](https://search.nixos.org/packages?channel=unstable&show=neofetch&from=0&size=500&sort=relevance&type=packages&query=neofetch), I can see it's listed!
 
-To add `neofetch` to my system without having an option for it, I can use `environment.systemPackages`
+To add `neofetch` to my system without having an option for it, I can use `environment.systemPackages`.
 
 ```nix title=config.nix "with pkgs;" ins={5-7} 
 {pkgs, ...}: {
@@ -513,7 +519,7 @@ To add `neofetch` to my system without having an option for it, I can use `envir
 The `with` keyword is a handy way to bring all attributes of `pkgs` into scope, so instead of having to do `pkgs.neofetch`, I can just do `neofetch`.
 </Aside>
 
-We now have neofetch installed!
+We now have `neofetch` installed!
 
 ![Neofetch on the NixOS VM](../../../assets/neofetch.png)
 
@@ -521,4 +527,4 @@ We now have neofetch installed!
 
 From here I'd recommend trying out programs, options, etc. You now know the basics of configuring NixOS!
 
-However, there's much you must learn before you can install and daily drive. The following guides will go through some more advanced concepts. Stay tuned!
+However, there's much you must learn before you can install and daily drive. The following guides will go through some more advanced concepts.
