@@ -134,13 +134,7 @@ NixOS takes Nix a step further and stores *system files* within the store. This 
 
 ```d2
 "/": {
-  "/etc/[some stuff]" {
-    shape: package
-    style.multiple: true
-  }
-  "/run/current-system/sw" {shape: package}
-
-  "/etc/[some stuff]" -> "/run/current-system/sw": "+/etc"
+  "/run/current-system" {shape: package}
 }
 
 "Environment Variables": {
@@ -156,23 +150,23 @@ NixOS takes Nix a step further and stores *system files* within the store. This 
   "/[hash]-system-path" {shape: package}
 }
 
-"/"."/run/current-system/sw" -> "/nix/store"."/[hash]-system-path": Symlink
+"/"."/run/current-system" -> "/nix/store"."/[hash]-system-path": Symlink
 
-"Environment Variables"."PATH" -> "/"."/run/current-system/sw": "+/bin" 
-"Environment Variables"."XDG_DATA_DIRS" -> "/"."/run/current-system/sw": "+/share" 
+"Environment Variables"."PATH" -> "/"."/run/current-system": "+/sw/bin" 
+"Environment Variables"."XDG_DATA_DIRS" -> "/"."/run/current-system": "+/sw/share" 
 "Environment Variables"."..." -> "/nix/store"
-"Environment Variables"."..." -> "/"."/run/current-system/sw"
+"Environment Variables"."..." -> "/"."/run/current-system"
 ```
 
 
 This also makes *switching* your NixOS config easy. NixOS VMs cannot switch by default, but when you install this will apply. Switching is really just a matter of changing what symlinks point to as well as updating environment variables (there *are* other things NixOS does as well, especially for hardware and bootloaders, but the point is it knows how to perform those operations based on your config).
 
 ```d2
-"/run/current-system/sw" -> "[hash]-system-path": Old link severed {
+"/run/current-system" -> "[hash]-system-path": Old link severed {
   target-arrowhead: {shape: diamond}
   style.stroke-dash: 5
 }
-"/run/current-system/sw" -> "[different-hash]-system-path": New link created! {
+"/run/current-system" -> "[different-hash]-system-path": New link created! {
   target-arrowhead: {
     shape: diamond 
     style.filled: true
@@ -181,7 +175,7 @@ This also makes *switching* your NixOS config easy. NixOS VMs cannot switch by d
 ```
 
 <Aside>
-This diagram is a simplification, switching `/run/current-system/sw` is only one part of switching to a new config.
+This diagram is a simplification, switching `/run/current-system` is only one part of switching to a new config.
 
 NixOS also needs to update other paths, start/stop systemd services, potentially install a new bootloader, etc.
 </Aside>
@@ -298,16 +292,16 @@ So, we know that the nix store holds *everything*. But how do we know when we do
 
 ```d2
 "/nix/var/nix/gcroots": {
-  "booted-system/*" { style.multiple: true }
-  "current-system/*" { style.multiple: true }
+  "booted-system"
+  "current-system"
   "auto/*" { style.multiple: true }
   "..." { style.multiple: true }
 }
 
 "/nix/store": { shape: cylinder }
 
-"/nix/var/nix/gcroots"."booted-system/*" -> "/nix/store": Symlink
-"/nix/var/nix/gcroots"."current-system/*" -> "/nix/store": Symlink
+"/nix/var/nix/gcroots"."booted-system" -> "/nix/store": Symlink
+"/nix/var/nix/gcroots"."current-system" -> "/nix/store": Symlink
 "/nix/var/nix/gcroots"."auto/*" -> "/nix/store": Symlink
 "/nix/var/nix/gcroots"."..." -> "/nix/store": Symlink
 ```
@@ -318,8 +312,8 @@ So, when comma downloads a command for us, the store entry that package is in (a
 
 ```d2
 "/nix/var/nix/gcroots": {
-  "current-system/sw"
-  "booted-system/sw"
+  "current-system"
+  "booted-system"
 }
 
 "/nix/store": {
@@ -347,8 +341,8 @@ So, when comma downloads a command for us, the store entry that package is in (a
   style.stroke-dash: 5
 }
 
-"/nix/var/nix/gcroots"."current-system/sw" -> "/nix/store"."[hash]-system-path": Safe!
-"/nix/var/nix/gcroots"."booted-system/sw" -> "/nix/store"."[another-hash]-system-path": Safe!
+"/nix/var/nix/gcroots"."current-system" -> "/nix/store"."[hash]-system-path": Safe!
+"/nix/var/nix/gcroots"."booted-system" -> "/nix/store"."[another-hash]-system-path": Safe!
 "/nix/store"."[hash]-cowsay" -> "Oblivion": "No Roots!" { style.animated: true }
 "/nix/store".ad -> "Oblivion": "No Roots!" { style.animated: true }
 ```
