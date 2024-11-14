@@ -215,7 +215,7 @@ Now we're ready to build. Similar to the VM, NixOS creates a package for every c
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
 ```
 
-<Aside>If you changed the name of your installer config, change `iso` here</Aside>
+<Aside>If you changed the name of your installer config, change `iso` here.</Aside>
 
 After a few minutes of building and compressing, the command should complete. In `./result/iso` you should see your installed image generated! Now it's time to flash it.
 
@@ -230,7 +230,7 @@ After determining the device path, you can run `dd` to copy the ISO image to the
 - My installer drive is on `/dev/sdX`
 - My installer ISO is in `/home/user/my-nixos-system/result/iso/nixos.iso` (this will be different for you as the ISO name includes a hash). Make sure to do an absolute path here.
 
-You can run:
+Using this setup I would use `dd` like so.
 
 ```sh "/home/user/my-nixos-system" "nixos.iso" "sdX"
 sudo dd if=/home/user/my-nixos-system/result/iso/nixos.iso of=/dev/sdX bs=4096 status=progress
