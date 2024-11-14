@@ -16,8 +16,10 @@ In this chapter we will...
 ## Adding Home Manager as an Input
 
 <Steps>
-1. First we need to add Home Manager as an input to our flake
-   In `flake.nix` add a new attr set to the `inputs` attr set called `home-manager` (this can technically be called whatever you like, some people shorten this to `hm`). In this new `home-manager` attr set add `url = "github:nix-community/home-manager";`. Then add `inputs.nixpkgs.follows = "nixpkgs";`.
+1. First we need to add Home Manager as an input to our flake.
+   In `flake.nix`, add a new attr set to the `inputs` attr set called `home-manager` (this can technically be called whatever you like, some people shorten this to `hm`). 
+   In this new `home-manager` attr set add `url = "github:nix-community/home-manager";`.
+   Then add `inputs.nixpkgs.follows = "nixpkgs";`.
     ```nix title=flake.nix ins={3-6}
     inputs = {
         nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
@@ -31,7 +33,7 @@ In this chapter we will...
    This tells Nix two things:
    1. We have an input named `home-manager` that should be fetched from the `nix-community/home-manager` GitHub repo
    2. The Home Manager flake itself depends on `nixpkgs` as an input. To keep thing consistent, we tell Nix to make that input follow our `nixpkgs` input
-2. Now, we add `home-manager` as an argument to our `outputs` function:
+2. Now, we add `home-manager` as an argument to our `outputs` function.
    ```nix title=flake.nix ins=", home-manager"
    outputs = inputs @ { self, nixpkgs, home-manager } let #...
    ```
@@ -41,12 +43,13 @@ We now have access to home manager in our flake!
 
 ## Telling NixOS About Home Manager
 
-Now we need NixOS to access home manager. First, in our `modules` list we should add `home-manager.nixosModules.home-manager`. 
+Now we need NixOS to access home manager. 
+In our `modules` list we should add `home-manager.nixosModules.home-manager`. 
 
 ```nix title=flake.nix ins={3}
 modules = [
-    ./modules/config.nix
-    home-manager.nixosModules.home-manager
+  ./modules/config.nix
+  home-manager.nixosModules.home-manager
 ];
 ```
 
@@ -54,16 +57,18 @@ This will load the required options into NixOS to use home manager.
 
 ## Configuring Home Manager
 
+Now we're ready to start using Home Manager within our NixOS config.
+
 In `config.nix` (or a separate module if you feel like it). Create a new attr set called `home-manager`. 
 
-We're going to fill this with our home config, replace `YOURNAME` with your username below.
+We're going to fill this with our home config, replace `YOURUSER` with your username below.
 
-```nix title=config.nix "YOURNAME"
+```nix title=config.nix "YOURUSER"
 home-manager = {
     useGlobalPkgs = true; # Sets HM to use the global nixpkgs instance
     useUserPackages = true;
     extraSpecialArgs = { inherit inputs; }; # Pass inputs to HM modules too
-    users.YOURNAME = import ../home/home.nix; # Point HM to our root home manager module for user "YOURNAME"
+    users.YOURUSER = import ../home/home.nix; # Point HM to our root home manager module for user "YOURNAME"
 };
 ```
 
@@ -88,15 +93,19 @@ Create `home/home.nix` and give fill it with boilerplate for now.
 }
 ```
 
+<Aside>
+You'll notice this boilerplate is the same as a NixOS module. Structurally they're the same, there's just a different set of options we can configure.
+</Aside>
+
 ## Using Home Manager
 
 First things first we'll add these options, replace `YOURNAME` with your username.
 
-```nix title=home/home.nix "YOURNAME" ins={2-6}
+```nix title=home/home.nix "YOURUSER" ins={2-6}
 {pkgs, ...}: {
     home = {
-        username = "YOURNAME";
-        homeDirectory = "/home/YOURNAME";
+        username = "YOURUSER";
+        homeDirectory = "/home/YOURUSER";
         stateVersion = "24.11";
     };
 }
@@ -132,7 +141,9 @@ To find more options for home manager, use the [Home Manager Options Search](htt
 
 ## Example: Adding `.face`
 
-To go into a quick use case for HM, we'll add a file to the root of our home folder, `.face`. This file is used by some DEs to know what profile picture to display on the lockscreen, app menu, etc.
+To go into a quick use case for HM, we'll add a file to the root of our home folder, `.face`. 
+
+This file is used by some programs to know what profile picture to display on various UI components.
 
 <Steps>
 1. Place the image file in your config's repo (I like to place any non-nix files in a folder called `res` for resources)
@@ -167,7 +178,7 @@ To go into a quick use case for HM, we'll add a file to the root of our home fol
    </Aside>
 </Steps>
 
-Build your VM and go ahead and `ls` your home directory. `.face` should now appear!
+Run the VM again and check your home folder, you'll notice a `.face` symlink!
 
 <FileTree>
 - /home/user
@@ -177,4 +188,6 @@ Build your VM and go ahead and `ls` your home directory. `.face` should now appe
 
 ## When To Use Home Manager
 
-Home manager was created primarily for non-NixOS system, so that at least *part* of your system could be managed by Nix. But it is also useful in NixOS for when you want to do user configuration or make your home folder somewhat declarative. If you ever come across a situation where both HM and NixOS provide an option consider if it should be a *system-wide* change or a *per-user* change, and don't be scared to experiment! You can always rollback.
+Home manager was created primarily for non-NixOS system, so that at least *part* of your system could be managed by Nix. But it is also useful in NixOS for when you want to do user configuration or make your home folder somewhat declarative. 
+
+If you ever come across a situation where both HM and NixOS provide an option consider if it should be a *system-wide* change or a *per-user* change, and don't be scared to experiment! You can always rollback.
