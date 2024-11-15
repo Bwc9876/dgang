@@ -16,8 +16,7 @@ In this chapter we will...
 
 ## Installing Nix (Lix)
 
-Before we even start with NixOS, we're going to use `Nix` to build a VM we can use to test with.
-This VM will eventually be the system you'll install.
+Before we even start with NixOS, we're going to use `Nix` to build a VM we can test with. This VM will eventually be the system you'll install.
 
 We'll *actually* be using a fork of Nix called Lix. This fork fixes some common bugs and turns on some features we'll be using by default.
 
@@ -37,7 +36,7 @@ nix --version
 
 ## Basic Nix CLI
 
-Nix is a package manager that can run on many systems. One of the nice things it can do is run a package without needing to install it.
+Nix is a package manager that can run on many systems. One of the nice things it can do is run a package without needing to install it!
 
 ```sh
 nix run "nixpkgs#python3"
@@ -60,19 +59,19 @@ We'll get into more later, just keep in mind we can run any package in [nixpkgs]
 
 Now let's get into creating a NixOS VM. This VM will eventually become the system you install on your actual device.
 
-To start out make a new folder to contain this project. In this new folder initialize a new Nix flake.
+To start out, make a new folder to contain this project. In this new folder initialize a new Nix flake.
 
 ```sh
 nix flake init
 ```
 
-This should create a new file, `flake.nix`
+This should create a new file, `flake.nix`.
 
 <FileTree>
 - **flake.nix**
 </FileTree>
 
-A flake is like a Nix "project". It's written as *nix expression*, specifically an *attr set*.
+A flake is a Nix "project", it's written as a *nix expression* (specifically an *attr set*).
 
 ```nix title="flake.nix"
 {
@@ -89,15 +88,15 @@ A flake is like a Nix "project". It's written as *nix expression*, specifically 
 }
 ```
 
-Opening the `flake.nix` we can see this expression. Let's walk through what each part means.
+Opening the `flake.nix` we can see the expression. Let's walk through what each part means.
 
 <Steps>
 1. We have an attribute named `description` that's a string.
 2. We have another attribute called `inputs` that's an attr set. 
-   This attr set contains an attribute named `nixpkgs` which is another attr set.
+   This attr set contains an attribute named `nixpkgs`, which is another attr set.
    Within that we set `url` to `github:nixos/nixpkgs?ref=nixos-unstable`.
    <Aside>
-    When you see this syntax
+    When you see the `X.Y = Z;` syntax,
     ```nix "nixpkgs.url = "
     {
       inputs = {
@@ -105,7 +104,7 @@ Opening the `flake.nix` we can see this expression. Let's walk through what each
       };
     }
     ```
-    It is directly equivalent to
+    It is directly equivalent to `X = { Y = Z; };`.
     ```nix /(nixpkgs) =/ "url = "
     {
       inputs = { 
@@ -120,23 +119,27 @@ Opening the `flake.nix` we can see this expression. Let's walk through what each
 3. We have one more attribute named `outputs` that's a *function*.
    This function takes `self`, which is a reference to this flake, and `nixpkgs`, which is the input we defined in `inputs`.
 4. Within this function we return two *packages* (placed in the `packages.x86_64-linux` attr set).
-   We set `hello` equal to an example package in `nixpkgs` and we set default to a recursive reference to our own `hello` package.
+   We set `hello` equal to an example package in `nixpkgs` and we set `default` to a recursive reference to our own `hello` package.
 </Steps>
 
-This is the basic structure of a flake. We have `inputs`, which define dependencies for or flake. And we have `outputs`, which is a function that can be passed those inputs to output *something*. 
+This is the basic structure of a flake. We have `inputs`, which define dependencies for our flake. And we have `outputs`, which is a function that will be passed those inputs to output *something*. 
 
-This "something" could be packages (As it is now), NixOS configurations (as we'll do in a bit), and much more. Flakes are a general purpose way to share Nix code between projects. The `nixpkgs` input we're defining is actually another flake located at [https://github.com/NixOS/nixpkgs/blob/nixos-unstable/flake.nix](https://github.com/NixOS/nixpkgs/blob/nixos-unstable/flake.nix).
+This "something" could be packages (As it is now), NixOS configurations (as we'll do in a bit), and much more. Flakes are a general purpose way to share Nix code between projects. 
+
+<Aside>
+The `nixpkgs` input we're defining is actually another flake located at [https://github.com/NixOS/nixpkgs/blob/nixos-unstable/flake.nix](https://github.com/NixOS/nixpkgs/blob/nixos-unstable/flake.nix).
+</Aside>
 
 ### Setting Up Flake.nix
 
-We're going to need to make a few changes to `flake.nix` to prepare to add a NixOS config.
+We're going to make a few changes to `flake.nix` to prepare for a NixOS config.
 
 <Aside title="Editor Recommendation">
 I'd recommend grabbing `bbenoist.Nix` for VSCode for editing Nix files.
 </Aside>
 
 <Steps>
-1. Remove the template lines that output `hello` and `default`.
+1. Remove the template lines that output the `hello` and `default` packages.
     ```nix title="flake.nix" del={9-10}
     {
       description = "A very basic flake";
@@ -171,8 +174,19 @@ I'd recommend grabbing `bbenoist.Nix` for VSCode for editing Nix files.
     ```
     <Aside>
     A `let` block allows us to define variables we want to use in the expression after `in`.
+    ```nix
+    {
+      answer = let x = 5; y = 6; in x + y;
+    }
+    ```
+    This will fill in `x` and `y` and evaluate to `11`.
+    ```nix
+    {
+      answer = 11;
+    }
+    ```
     </Aside>
-3. Add `system` to the let block, we want this to be `x86_64-linux` as that's the system we'll make a VM for.  
+3. Add `system` to the let block, we want this to be `x86_64-linux` as that's the system we'll make a VM for (and install on).  
     ```nix title="flake.nix" ins={12}
     {
       description = "A very basic flake";
@@ -190,7 +204,7 @@ I'd recommend grabbing `bbenoist.Nix` for VSCode for editing Nix files.
       };
     }
     ```
-4. Add `pkgs` to the let block, we'll `import` `nixpkgs` here, specifying the system we want `nixpkgs` to be for.  
+4. Add `pkgs` to the let block, we'll `import nixpkgs` here, specifying the system we want `nixpkgs` to target.  
     ```nix title="flake.nix" ins={13-15}
     {
       description = "A very basic flake";
@@ -211,6 +225,28 @@ I'd recommend grabbing `bbenoist.Nix` for VSCode for editing Nix files.
       };
     }
     ```
+    A few new pieces of syntax here.
+
+    <Aside>
+    `import` is saying "parse this file and return the result". In this case we're parsing [the `default.nix` file](https://github.com/NixOS/nixpkgs/blob/master/default.nix) in the `nixpkgs` flake repo.
+    </Aside>
+
+    <Aside>
+    The result of `import nixpkgs` is a function, we call that function by passing its argument after a space, this is called function application. This may be a bit confusing coming from a non-functional programming language.
+    ```nix
+    let addFive = x: x + 5; in {
+      answer = addFive 4; # Most languages would do `addFive(4);`
+    }
+    ```
+    This block will evaluate to `9`.
+    ```nix
+    {
+      answer = 9;
+    }
+    ```
+    In the case of our `import` statement, we're calling it with an attr set as the argument.
+    </Aside>
+
     <Aside>
     The `inherit` keyword here is a shortcut for saying `system = system;`.
     </Aside>
@@ -218,26 +254,26 @@ I'd recommend grabbing `bbenoist.Nix` for VSCode for editing Nix files.
 
 With these changes we've:
 
-1. Defined a new variable, `system` that we'll use in places we need to specify which system to use.
-2. Imported `nixpkgs`, telling it to target our `system`, and storing it in a variable called `pkgs`.
+1. Defined a new variable, `system` that we'll use in places we need to specify which system to use (like 2 lines later).
+2. Instantiated `nixpkgs`, told it to target our `system`, and stored it in a variable called `pkgs`.
 
 ### Writing Our NixOS Config
 
-Now we'll define a *NixOS Config*. A NixOS config is a nix expression that represents a system. This configures everything from the bootloader and kernel to the DE the system will run.
+Now we'll define a *NixOS Config*. A NixOS config is a nix expression that instructs on how to build a system. This configures everything from the bootloader and kernel to the DE the system will run.
 
-We'll make our flake export this NixOS config, allowing us to use it with the Nix CLI.
+We'll make our flake export this NixOS config, allowing us to use it with the Nix CLI (like how `nixpkgs` exports `python3`).
 
 These steps will use the string `YOURNAME` to represent your system's name, you can set this to whatever you want, I'd recommend a `kebab-case` string.
 
 <Steps>
 1. First we'll add the output. Note that the start of the flake file isn't included here for brevity.
-    ```nix title="flake.nix" "YOURNAME" ins={11-13}
+    ```nix title="flake.nix" "YOURNAME" ins={13-15}
     { 
       # ...
 
       outputs = { 
         self, 
-        nixpkgs 
+        nixpkgs,
       }: let
         system = "x86_64-linux";
         pkgs = import nixpkgs {
@@ -250,7 +286,7 @@ These steps will use the string `YOURNAME` to represent your system's name, you 
       }; 
     }
     ```
-    Here we're making a *function call* to `nixpkgs.lib.nixosSystem`, we're passing an attr set as an argument.
+    Here we're making a function call to `nixpkgs.lib.nixosSystem`, we're passing an attr set as an argument.
 2. In this attr set, add a basic system configuration. We'll go over what it means in a sec.
     ```nix title="flake.nix" "YOURNAME" ins={12-15}
     { 
@@ -275,6 +311,12 @@ These steps will use the string `YOURNAME` to represent your system's name, you 
     Here we're doing 2 things
     1. Inheritting `system` and `pkgs`, telling NixOS what system we're building for and what packages to use.
     2. Declaring an empty NixOS module. We'll fill this out next.
+    <Aside>
+    `modules` here is an *array* (of attr sets), this is pretty much the same as in normal programming. The only weird thing is we use spaces instead of commas to delimit the items.
+    ```nix
+    [1 2 3 4 5]
+    ```
+    </Aside>
 3. Configure our NixOS system. In the attr set we're passing as the only item to the `modules` array, we'll set some basic options.
     In this code block, `YOURUSER` can be replaced with the username you wish to use, I'd recommend an all lowercase string.
     ```nix title="flake.nix" "YOURNAME" "YOURUSER" "asdf"
@@ -298,11 +340,11 @@ These steps will use the string `YOURNAME` to represent your system's name, you 
     1. `system.stateVersion` sets the *major* version of NixOS to use.
     2. `users.users.YOURUSER` configures your account to be a normal user, sets your password to `asdf`, and makes you a sudoer.
     3. `services.qemuGuest.enable` enables some features that'll make the VM nicer to use.
-</Steps>
 
-<Aside>
-We set password hardcoded here for ease-of-use, later on we'll remove it in favor of setting it ourselves after installing.
-</Aside>
+    <Aside>
+      We set password hardcoded here for ease-of-use, later on we'll remove it in favor of setting it ourselves after installing.
+    </Aside>
+</Steps>
 
 We now have a very basic config set up, let's boot it!
 
@@ -310,7 +352,7 @@ We now have a very basic config set up, let's boot it!
 
 We have now configured a basic NixOS VM! With that small Nix expression we've represented a minimal NixOS system with one user.
 
-On an actual NixOS system we'd try to switch to this config, but we'll utilize a different NixOS feature to run a VM instead.
+On an actual NixOS system we'd try to *switch* to this config, but we'll utilize a different NixOS feature to run a VM instead.
 
 NixOS exports a package under every system config called `build.vm` that builds and runs a VM image for us!
 
@@ -322,7 +364,7 @@ nix run .#nixosConfigurations.YOURNAME.config.system.build.vm
 
 This is similar to what we did with `nixpkgs#python3` above. Instead of `nixpkgs` we're grabbing from the flake in the current directory (`.`). And the package we want is `nixosConfigurations.YOURNAME.config.system.build.vm`.
 
-Press enter and wait for the VM to start. Use the username and password you configured above to login.
+Run the command and wait for the VM to start. Use the username and password you configured above to login.
 
 ![Booting and testing the NixOS VM](../../../assets/vm-initial.png)
 
@@ -332,7 +374,7 @@ We've now successfully started a NixOS VM!
 
 Right now we're configuring everything within `flake.nix`. While this works, it can get a bit messy to have *everything* in one file as you'll likely set *many* options.
 
-To fix this instead of defining our module inline we can separate it out into another nix file. 
+To fix this, instead of defining our module inline we can separate it out into another nix file. 
 
 <Steps>
 1. Create a new file called `config.nix`.
@@ -342,13 +384,19 @@ To fix this instead of defining our module inline we can separate it out into an
     - ...
     - **config.nix**
     </FileTree>
-2. In this file we'll put another Nix expression. But unlike `flake.nix` (where the top-level expression is an attr set), we'll make this expression a *function*.
+2. In this file we'll put another Nix expression. But unlike `flake.nix` (where the top-level expression is an attr set), we'll make this top-level expression a *function*.
     ```nix title="config.nix"
     {pkgs, ...}: {
 
     }
     ```
-    Here we're defining a function that takes one argument, `pkgs` (which is `nixpkgs`), and *ignores* all other arguments (NixOS passes many options to us, we want to only declare the ones we want).
+    Here we're defining a function that takes one argument, an attr set. NixOS will pass many attributes to us through this set, but for now we only want `pkgs`.
+    <Aside>
+    The `...` syntax in an attr set is a way to ignore all other attributes not previously stated.
+    </Aside>
+    <Aside>
+    The attributes of this attr set are also referred to as the module's arguments. So when we're talking about modules and we say "arguments", keep in mind what we *really* mean is the attributes of the singular, actual attr set argument.
+    </Aside>
 3. Now, we can move the code we previously had inline...
     ```nix title="flake.nix" "YOURNAME" "YOURUSER" "asdf" del={5-11} del="[{" del="}]"
     {
@@ -388,11 +436,15 @@ To fix this instead of defining our module inline we can separate it out into an
     }
     ```
     <Aside>
-    Note the lack of quotes around the path to `config.nix`. We'll get into exactly what this does later, just know it's not the same as passing *just* the path as a string.
+    Note the lack of quotes around the path to `config.nix`. We'll get into what this does later, just know it's not the same as passing the path as a string.
     </Aside>
 </Steps>
 
-Run `nix run` again to build and launch the VM again, make sure the system still works.
+Run the VM again, make sure the system still builds and works.
+
+```sh "YOURNAME"
+nix run .#nixosConfigurations.YOURNAME.config.system.build.vm
+```
 
 ## Customization
 
@@ -409,15 +461,15 @@ I'll use XFCE here for simplicity, but feel free to change this later!
 }
 ```
 
-Adding a DE is as simple as this! Opposed to imperatively installing a package like with other distros, we declaratively *enable* the one that we want.
+Adding a DE is as simple as this! Opposed to imperatively installing a package like with other distros, we declaratively *enable* the ones that we want.
 
-We'll get into how we can find more options and add packages there aren't explicit options for later. For now, try running the VM again and check out XFCE.
+We'll get into how we can find more options and packages later. For now, try running the VM and check out XFCE.
 
 ![The XFCE greeter on the NixOS VM](../../../assets/vm-with-de.png)
 
 ### Configuring Nix with Nix
 
-Before we do anything else we're going to configure Nix within our system similar to how we have it configured outside the system. This will be used a bit later.
+Before we do anything else we're going to configure Nix within our system. This way when we install, Nix will be setup how we expect it.
 
 ```nix title="config.nix" ins={5-19}
 {pkgs, ...}: {
@@ -444,22 +496,22 @@ Before we do anything else we're going to configure Nix within our system simila
 
 Big block here, let's go over what this all does.
 
-- We disable channels, they're a different system usually used in place of flakes, but we're using flakes so we'll disable them.
+- We disable channels, they're a different system usually used in place of flakes, but we like flakes so we'll disable them.
 - We set the underlying Nix implementation to be `lix`, just like on our host system.
-- Next in settings we enable a few `nix` options.
-  - We enable a few experimental features, like flakes and the new CLI.
-  - We enable nix store opimization.
-- We configure garbage collection to run automatically once a week, we'll explain what garbage collection is later.
+- Next in `settings` we enable a few `nix` options.
+  - We enable a few experimental features, flakes and the new CLI (the CLI you're using right now).
+  - We enable nix store opimization, makes stuff more space efficient.
+- We configure garbage collection to run automatically once a week, I'll explain what garbage collection is later.
 
 ## Installing Programs
 
-When it comes to installing programs or enabling features, there are two (more later) methods you can use.
+When installing programs or enabling features, there are two methods you can use.
 
 ### Method 1: NixOS Options
 
-Many popular programs or features have NixOS options built-in, this is how we can simply do `services.xserver.desktopManager.xfce.enable = true;`.
+Many popular programs or features have NixOS options built-in, this is how we can simply do `services.xserver.desktopManager.xfce.enable = true;` for example.
 
-In order to find the options that we can set, we can use the [NixOS Option Search](https://search.nixos.org/options?channel=unstable). This will show you all the options that NixOS provides.
+In order to find the options that are available to us, we can use the [NixOS Option Search](https://search.nixos.org/options?channel=unstable). This will show you all the options that NixOS provides.
 
 <LinkCard target="_blank" title="NixOS Option Search" href="https://search.nixos.org/options?channel=unstable" />
 
@@ -467,7 +519,7 @@ In order to find the options that we can set, we can use the [NixOS Option Searc
 
 Let's say I want to use Firefox on my system. To do this I first look up "firefox" on the option search. 
 
-I can see that there's an option, [programs.firefox.enable](https://search.nixos.org/options?channel=unstable&show=programs.firefox.enable&from=0&size=500&sort=relevance&type=packages&query=firefox).
+I can see that there's an option, [programs.firefox.enable](https://search.nixos.org/options?channel=unstable&show=programs.firefox.enable&from=0&size=500&sort=relevance&type=packages&query=firefox). Like the name implies this option will enable firefox on my system.
 
 Because NixOS provides an option for this, all I have to do is add it to my config.
 
@@ -498,7 +550,7 @@ This will install the package and add its commands to your `PATH` (as well as ad
 
 #### Example: Installing Neofetch
 
-Let's say I want to install `neofetch` on my system, however after checking for a NixOS option for it, it doesn't exist.
+Let's say I want to install `neofetch` on my system, however after checking for a NixOS option for it, it doesn't exist!
 
 But, after [searching in Nixpkgs](https://search.nixos.org/packages?channel=unstable&show=neofetch&from=0&size=500&sort=relevance&type=packages&query=neofetch), I can see it's listed!
 
