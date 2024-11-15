@@ -5,19 +5,21 @@ description: A set of helpful utilities to know about and use with nix/NixOS
 
 import { Steps, Aside, FileTree } from "@astrojs/starlight/components";
 
-Real quick we're going to go over setting up and using some utilities.
+Real quick we're going to install and setup some handy utilities that can help with Nix/NixOS.
 
 In this chapter we will...
 
 1. Install `nom` in our config
-2. Get a basic `justfile` setup
+2. Install `just` and get a basic `justfile` setup
 3. Learn and install `comma`
 
 ## Nix Output Monitor
 
-As your VM builds you might notice not much output is given. That's because Nix only shows the current line out stdout when building and doesn't make it too obvious what's happening.
+As your VM builds you might notice not much output is given. That's because Nix only shows the current line out stdout when building.
 
-Nix output monitor is a community project that renders a nice-looking tree of all packages being built and shows the stdout of the current build process(es) above it. Adding nix-output-monitor to our NixOS config is as simple as adding it to `environment.systemPackages`. 
+Nix output monitor (`nom`) is a community project that renders a nice-looking tree of all packages being built and shows the stdout of the current build process(es) above it. 
+
+Adding nix-output-monitor to our NixOS config is as simple as adding it to `environment.systemPackages`. 
 
 ```nix title=config.nix ins={3}
 environment.systemPackages = with pkgs; [
@@ -43,7 +45,27 @@ nix profile install nixpkgs#nix-output-monitor
 
 Just is a very simple command-line runner that we can use to make project-specific shortcuts. All commands are stored in a `justfile` which will be read from the CWD when running `just`. 
 
-Here's the justfile I recommend for your config. Replace `YOURNAME` with the name of your system config.
+### Installing Just
+
+Similar to `nix-output-monitor`, add `just` to your `environment.systemPackages`.
+
+```nix title=config.nix ins={4}
+environment.systemPackages = with pkgs; [
+    # ...
+    nix-output-monitor
+    just
+];
+```
+
+And install it on your host distro with nix profiles.
+
+```sh
+nix profile install nixpkgs#just
+```
+
+### Using Just
+
+Here's the `justfile` I recommend for your config. Replace `YOURNAME` with the name of your system config.
 
 ```txt title=justfile "YOURNAME"
 _default:
@@ -95,35 +117,17 @@ run-vm:
 - ...
 </FileTree>
 
-### Installing Just
-
-Similar to `nix-output-monitor`, just add `just` to your `environment.systemPackages`.
-
-```nix title=config.nix ins={4}
-environment.systemPackages = with pkgs; [
-    # ...
-    nix-output-monitor
-    just
-];
-```
-
-And install it on your host distro with nix profiles.
-
-```sh
-nix profile install nixpkgs#just
-```
-
-After installing try running `just vm`. The VM should build and run with nice output!
+After installing, try running `just vm`. The VM should build and run with nice output!
 
 ## Comma
 
 Comma is one of the most useful tools I've ever used. Sadly it's a bit more complicated to install on non-NixOS system so I won't get into how to do it here (all the more motivation to finish this tutorial I suppose).
 
-Comma is a way to run a command that you don't have installed. Remember how we ran `nix run nixpkgs#python3` in chapter 1? This never installed `python3`, merely copied it to our *nix store* and executed the binary in that store path. 
+Comma is a way to run a command that you don't have installed. Remember how we ran `nix run nixpkgs#python3` in chapter 1? It never installed `python3`, merely copied it to our *nix store* and executed the binary in that store path. 
 
-That may not make total sense yet, next chapter we'll get into how the Nix store works. For now what you need to know is comma goes a step further, you pass it a command and it will find the package(s) that command belongs to, copy the package to your store, and execute it on-the-spot.
+That may not make total sense yet, next chapter we'll get into how the Nix store works. For now what you need to know is that comma goes a step further, you pass it a command and it will find the package(s) that command belongs to, copy the package to your store, and execute it on-the-spot.
 
-We'll get into how to use it after installing it.
+We'll get into how to use it after installation.
 
 ### Adding Comma
 
@@ -176,7 +180,7 @@ To test comma, start up your VM and try to run `cowsay`.
 cowsay Hello
 ```
 
-![The cow is very sad as cowsay did not work](../../../assets/cow.jpg)
+![A cow that is very sad as cowsay did not work](../../../assets/cow.jpg)
 
 Wait... **what??** We don't have cowsay installed? That's wild. But we *need* to cowsay!! 
 
@@ -212,7 +216,7 @@ To clear this choice, use the `-e` flag.
 </Aside>
 
 <Aside type="tip">
-If you need the command for multiple calls, `-s` will make a shell instead of executing once.
+If you need the command for multiple calls, `-s` will make a shell instead of executing the command once.
 
 ```sh ins="-s"
 , -s cowsay
