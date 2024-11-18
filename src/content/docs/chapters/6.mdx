@@ -3,7 +3,7 @@ title: Chapter 6 - Preparing For Install
 description: The penultimate chapter! Preparing our config and creating/flashing an ISO
 ---
 
-import { Aside, LinkCard, Steps } from "@astrojs/starlight/components";
+import { Aside, LinkCard, Steps, FileTree } from "@astrojs/starlight/components";
 
 Ok! We're familiar with Nix and NixOS. Now let's get ready to make the full switch.
 
@@ -18,19 +18,19 @@ In this chapter we will...
 
 Before anything, make sure you commit to your repo.
 
-After that, I'd recommend deleting the `nixos.qcow2` VM image from your folder and booting the VM again. 
+After that, I'd recommend deleting the `nixos.qcow2` VM image from your folder and booting the VM again. This is to check your system from a blank slate and make sure you didn't imperatively configure something you wanted.
 
 Double-check that everything is how you want it without any previously configured state. This way we know that when you start up the system for the first time it'll be exactly how you expect it.
 
 ## Preparing our Config
 
-Okay, first things first we'll need a bootloader for our system. Since until now we've only run with the VM output we haven't needed one. You'll want to set `boot.loader.systemd-boot.enable` equal to `true`. This will ensure a bootloader exists when installing (The VM will still work with this set).
+Okay, first things first we'll need a bootloader for our system. Since until now we've only run with the VM, we haven't needed one. You'll want to set `boot.loader.systemd-boot.enable` equal to `true`. This will ensure a bootloader exists when installing (The VM will still work with this set).
 
 ```nix title=config.nix ins={1}
 boot.loader.systemd-boot.enable = true;
 ```
 
-Also, if you're device will be on WiFi make sure to enable wireless networking
+Also, if you're device will be on WiFi make sure to enable wireless networking.
 
 ```nix title=config.nix ins={1}
 networking.networkmanager.enable = true;
@@ -51,7 +51,7 @@ users.users.YOURNAME = {
 
 ### Adding NixOS Hardware
 
-[NixOS hardware](https://github.com/NixOS/nixos-hardware) is a flake maintained by the NixOS community that contains various config settings that improve the NixOS experience on devices. 
+[NixOS hardware](https://github.com/NixOS/nixos-hardware) is a flake maintained by the NixOS community that contains various config settings that improve the NixOS experience on different devices. 
 
 <LinkCard target="_blank" title="NixOS hardware" href="https://github.com/NixOS/nixos-hardware"/>
 
@@ -130,13 +130,11 @@ Finally, we'll run a check to make sure the system is sound.
 nix flake check
 ```
 
-Finally finally, make sure to commit again for good measure.
-
 ## Creating an Installation ISO
 
 So, we could go ahead and download the official installer ISO from `nixos.org`. But...
 
-1. That installer uses channels (not flakes)
+1. That installer uses channels (not flakes, yuck!)
 2. It's a graphical installer (boring!)
 3. It's more in the spirit of NixOS to make our own!
 
@@ -155,21 +153,30 @@ outputs = inputs @ {
   # ...
   nixosConfigurations.iso = nixpkgs.lib.nixosSystem {
     inherit system pkgs;
-    specialArgs = [ inputs ];
+    specialArgs = { inherit inputs; };
     modules = [
       "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix" # I'll explain this in a sec
-      ./modules/nix.nix # We want certain Nix features when installing
+      ./modules/nix.nix # We want certain Nix features when installing, specifically flakes
       ./iso.nix # Suggested path, we'll make this in a sec, change as wanted
     ];
   };
 }
 ```
 
-The first item we have is a reference to a module within `nixpkgs`. This module is what the official installer is also based on, we'll use it to let us create an ISO of this NixOS config.
+The first item we have is a reference to a module within `nixpkgs`. This module is what the official installer is also based on, it lets us create an ISO of this NixOS config.
 
 ### Configuring the ISO
 
-Now open `./iso.nix` (or wherever you wish to place the ISO NixOS module), and fill out the boilerplate.
+Now create and open `./iso.nix` (or wherever you wish to place the ISO NixOS module), and fill out the boilerplate.
+
+<FileTree>
+- flake.nix
+- flake.lock
+- **iso.nix**
+- modules/
+- home/
+- ...
+</FileTree>
 
 ```nix title=iso.nix
 {pkgs, ...}: {
@@ -184,7 +191,7 @@ In here we'll need some basic setup for our disk image.
   environment.systemPackages = with pkgs; [
     gptfdisk # For partitioning disks
     util-linux # Various utilities
-    vim # For editing things (you will need an editor!)
+    vim # For editing things (you **will** need an editor!)
   ];
 }
 ```
@@ -219,11 +226,38 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 
 After a few minutes of building and compressing, the command should complete. In `./result/iso` you should see your installed image generated! Now it's time to flash it.
 
+<FileTree>
+- flake.nix
+- flake.lock
+- ...
+- result/
+  - iso/
+    - **nixos-24.11.20241105.[hash]-x86_64-linux.iso**
+</FileTree>
+
 ## Flashing to a Thumbdrive
 
-First things first find a flash drive, if you already know how to flash an ISO to make a thumbdrive bootable go ahead. If you don't plug in the flashdrive, if your OS auto-mounts it, you should click "eject" as we'll be working with the raw block device file.
+Find a flash drive, if you already know how to flash an ISO to make a thumbdrive bootable go ahead. 
 
-After ejecting the device (if your system auto-mounted), try to find it under `/dev`. Most USB devices will be `/dev/sdX` where `X` is a letter. **Keep in mind your own hard drive may be `/dev/sdX` as well**, so make sure to pick the correct one. To help find it, you can use the `lsblk` command to list all block devices. The device we want *should not* have a mount point.
+<Aside>
+If your OS auto-mounts the drive, you should click "eject" as we'll be working with the raw block device file.
+</Aside>
+
+Now try to find the device under `/dev`. Most USB devices will be `/dev/sdX` where `X` is a letter. **Keep in mind your own hard drive may be `/dev/sdX` as well, so be careful!**. 
+
+To help find it, you can use the `lsblk` command to list all block devices. The device we want *should not* have a mount point.
+
+```sh
+lsblk
+```
+
+<Aside>
+If you don't have it installed, Nix to the rescue!
+```sh
+nix shell nixpkgs#util-linux
+lsblk
+```
+</Aside>
 
 After determining the device path, you can run `dd` to copy the ISO image to the flash drive. Let's say I have the following setup:
 
@@ -245,7 +279,7 @@ We now have our very own custom installation ISO!
 ## Final Prep
 
 <Aside type="danger">
-This goes without saying but installing a new distro *will wipe your current system*. Make sure to back up any files you want to keep.
+This goes without saying but installing a new distro *will wipe your current system*. Make sure to back up any files you want to keep!
 </Aside>
 
 <Aside type="caution">

@@ -30,7 +30,7 @@ After booting you'll be greeted with a shell. The initial message goes over how 
 
 ## Disk Prep
 
-First things first we need to get the main disk ready for NixOS. To do this we *will have to wipe it*.
+First we need to get the main disk ready for NixOS. To do this we *will have to wipe it*.
 
 To get started, find the block device path of your main disk. For NVME this will usually be `/dev/nvme0n1`, for others it may be `/dev/sdX`. You can use the `lsblk` command to find it based on size.
 
@@ -40,7 +40,9 @@ Now, run the following, replacing `DEV_PATH` with the device path.
 sudo cgdisk DEV_PATH
 ```
 
-In this TUI you'll need to do a few things:
+This opens a interactive TUI for partitioning disks, we'll use this to layout the disk for NixOS.
+
+You'll need to do a few things here.
 
 <Steps>
 1. Delete any partitions present on the disk
@@ -55,8 +57,8 @@ In this TUI you'll need to do a few things:
    <Steps>
    1. New partition (below the boot partition)
    2. Press Enter
-   3. Enter the size you desire for the swap partition. (e.g. `4G` for 4 GB)
-   4. For hex code enter `8200` for "Linux Swap"
+   3. Enter the size you desire for the swap partition. (ex. `4G` for 4 GB)
+   4. For hex code enter `8200`, for "Linux Swap"
    5. Name this `SWAP` or whatever you want
    </Steps>
 4. Finally allocate the rest of the disk space to your actual system
@@ -64,7 +66,7 @@ In this TUI you'll need to do a few things:
    1. New partition (below the other partitions)
    2. Press enter
    3. For size simply press enter, this will make it go to the end of the disk
-   4. For hex code press enter (`8300`), for a Linux filesystem
+   4. For hex code press enter (`8300`), for "Linux Filesystem"
    5. You can name this `NIXOS` or whatever you want
    </Steps>
 5. Your `cgdisk` should look something like this
@@ -75,10 +77,10 @@ In this TUI you'll need to do a few things:
 
 Now we need to create filesystems on the new partitions we made.
 
-When I put `PARTITION_PATH` in the commands below I *don't* mean just the device path
+When I put `PARTITION_PATH` in the commands below I *don't* mean just the device path.
 
-- For NVME drives a partition should be at `/dev/nvme0n1p#` where `#` is replace with the partition number
-- For drive it should be at `/dev/sdX#` where `#` is replaced with the partition number
+- For NVME drives a partition should be at `/dev/nvme0n1p#` where `#` is replace with the partition number.
+- For SATA drives it should be at `/dev/sdX#` where `#` is replaced with the partition number.
 
 So with this in mind:
 
@@ -105,9 +107,9 @@ Great! We've fully primed our disk for install.
 
 ## Mounting Disks
 
-Next we need to mount the disks we just created for install.
+Next we need to mount the disks we just created so we can write to them.
 
-`PARTITION_PATH` will be the same as outlined above
+`PARTITION_PATH` will be the same as outlined above.
 
 <Steps>
 1. Mount the *main partition* (`3` **if you did swap**, `2` otherwise)
@@ -124,9 +126,13 @@ Next we need to mount the disks we just created for install.
    ```
 </Steps>
 
+<Aside>
+The swap partition doesn't need to be mounted as we did `swapon` earlier, enabling swap.
+</Aside>
+
 Our disks are now mounted for setup!
 
-## Getting Our Flake
+## Getting our Flake
 
 Almost ready now. But first, we'll copy our system flake to our newly mounted drive.
 
@@ -135,7 +141,7 @@ Almost ready now. But first, we'll copy our system flake to our newly mounted dr
    ```sh
    sudo mkdir /mnt/flake
    ```
-2. Copy the flake to our newly mounted drive
+2. Copy the flake to our newly mounted drive, note the `/*`! This copies the folder contents and not the symlink.
    ```sh
    sudo cp -r /etc/flake/* /mnt/flake
    ```
@@ -145,12 +151,12 @@ Almost ready now. But first, we'll copy our system flake to our newly mounted dr
    ```
 </Steps>
 
-The layout of `/mnt` should now look like
+The layout of `/mnt` should now look like this.
 
 <FileTree>
 - /mnt/ mounted to partition 3 (or 2)
   - /mnt/boot/ mounted to partition 1
-  - /mnt/flake/ our flake, ready to edit
+  - **/mnt/flake/** our flake, ready to edit
     - flake.nix
     - ...
 </FileTree>
@@ -159,13 +165,13 @@ The layout of `/mnt` should now look like
 
 Now we need to add a hardware-specific module to our NixOS config for this computer.
 
+This tells NixOS where disks are, what CPU we're running, etc.
+
 ```sh
 sudo nixos-generate-config --root /mnt --show-hardware-config > /mnt/flake/hardware-configuration.nix
 ```
 
 This will generate hardware-specific config for your system. Take a look at it with `cat` to see what it does.
-
-This file is mostly just pointing NixOS to the proper disk partitions, but depending on your hardware it may also set some options.
 
 <FileTree>
 - /mnt/flake
@@ -229,11 +235,9 @@ Your system will then reboot! Take out your installation medium now.
 
 ## First Boot
 
-After rebooting the system should go into a menu with `NixOS` and `Reboot into firmware interface`. We want `NixOS`.
-
 The system should initialize and reach some sort of greeter (`logind`, `tuigreet`, `SDDM`, `GDM`, etc depending on what you set up). 
 
-Before attempting to login (you can't, you don't have a password). We need to set your user password
+Before attempting to login (you can't). We need to set your user password.
 
 <Steps>
    1. (*If you have a graphical greeter*): Switch TTYs with `Ctrl+Alt+F2`. (You may need to hold `Fn` as well on a laptop)
@@ -271,15 +275,15 @@ services.qemuGuest.enable = true;
 
 You can also optionally remove the `vm` recipe from your `justfile`
 
-```txt title=justfile del={3-8}
+```txt title=justfile "YOURNAME" del={3-8}
 # ...
 
 [private]
 alias vm := run-vm
 # f: run VM of test
 run-vm:
-    nom build .#nixosConfigurations.test.config.system.build.vm
-    nix run .#nixosConfigurations.test.config.system.build.vm
+    nom build .#nixosConfigurations.YOURNAME.config.system.build.vm
+    nix run .#nixosConfigurations.YOURNAME.config.system.build.vm
 ```
 
 ### Organizing hardware-configuration.nix
@@ -318,8 +322,10 @@ Now that we're fully in NixOS we need to know a few more things.
 Switching is the process of pointing your running system to another config and activating it.
 
 ```sh
-nixos-rebuild switch --flake .#
+sudo nixos-rebuild switch --flake .#
 ``` 
+
+Notice how we don't need a name here, it'll look for a config that matches the system's hostname by default.
 
 For convenience this is in your `justfile`, to rebuild and switch to a new config, run `just s`.
 
@@ -335,25 +341,27 @@ nom build .#nixosConfigurations.YOURNAME.config.system.build.toplevel
 
 Replace `YOURNAME` with your system config's name. This is also included in your `justfile`, run `just b` to build your system.
 
+This is nice for when you're making a big change and don't want to change immediately.
+
 ### Updating
 
 Something we never really talked about was updating. Updating NixOS is as simple as changing with commit of `nixpkgs` we pull.
 
-Nix can automatically update all inputs to their latest commits with
+Nix can automatically update all inputs to their latest commits with flakes.
 
 ```sh
 nix flake update
 ```
 
-You can also use `just u` as a shortcut
+You can also use `just u` as a shortcut.
 
 <Aside>
-I had you setup your flake following the `nixos-unstable` branch of `nixpkgs`. This is generally a sound default as it's pretty up-to-date and doesn't break often. You can also change the input to point to `master` for more cutting-edge (like VERY cutting-edge) updates.
+I had you setup your flake following the `nixos-unstable` branch of `nixpkgs`. This is generally a sound default as it's pretty up-to-date and doesn't break often. You can also change the input to point to `master` for more cutting-edge (like **VERY** cutting-edge) updates.
 </Aside>
 
 ### Garbage Collection
 
-You'll also need to be able to garbage collect so you have plenty of free disk space
+You'll also need to be able to garbage collect so you have plenty of free disk space.
 
 ```sh
 nix-collect-garbage -d
@@ -364,15 +372,21 @@ Note that these do two different things and should both be run. You can also use
 
 ### Rollback
 
-When booting, `systemd-boot` will display all previous NixOS generations, you can select one to boot from. This is very handy if you mess up your most recent config to be unbootable. With NixOS as long as you don't mess up your bootloader you can usually recover easily.
+When booting, `systemd-boot` will display all previous NixOS generations, you can boot from any one of these.
 
 ![Previous generations are available to select in systemd-boot](../../../assets/generations.png)
+
+This is very handy if you mess up your most recent config to be unbootable. With NixOS as long as you don't mess up your bootloader you can usually recover easily.
 
 Also remember that you have a git repo to track your config, you can always rollback to a previous commit if needed.
 
 ### Running Non-NixOS Binaries
 
 If you ever need to run binaries off the web without needing to setup an FHS, you can use `steam-run` (from the `steam-run` package) to run the binary.
+
+```sh
+steam-run ./my-bin
+```
 
 ## The Story Doesn't End Here
 

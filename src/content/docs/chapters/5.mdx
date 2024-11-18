@@ -1,11 +1,11 @@
 ---
 title: Chapter 5 - How Did We Get Here
-description: A look under-the-hood at how nix/NixOS function at a high level
+description: A look under-the-hood at how NixOS functions at a high level
 ---
 
 import { Aside, FileTree } from "@astrojs/starlight/components";
 
-Okay, you're not going to like to hear this but I believe that before you can install NixOS you need to understand how Nix works from a fundamental level. I tried to defer it for as long as possible with a shiny VM and cool tools but now we need to get into how Nix works and *why* it works.
+Now it's time to go back to basics, this chapter's going to explain how Nix works internally and *why* it works. It's good to have knowledge of this, especially when troubleshooting.
 
 In this chapter we will learn...
 
@@ -23,7 +23,7 @@ Nix is based on *functional programming*, which values purity and reproducibilit
 
 A pure function will always output the same thing given the same inputs. Nix packages should always build the same given they same inputs.
 
-Unlike other Linux package managers Nix won't use currently installed libraries/tools while building, all dependencies of a Nix package must be declared. This ensures that the package will always build the same on any machine.
+Unlike other Linux package managers, Nix won't use currently installed libraries/tools while building. All dependencies of a Nix package must be declared. This ensures that the package will always build the same on any machine.
 
 ## How a Nix Package is Made
 
@@ -46,7 +46,7 @@ Nix packages are represented by a Nix expression, similar to how our NixOS confi
 ```
 
 <Aside>
-Like a NixOS module, we can define packages inline or in a separate file as a function. Most people prefer to do it as a separate file.
+Like a NixOS module, we can define packages inline or in a separate file as a function. Most people prefer to do it as a separate file for organization.
 </Aside>
 
 Nix evaluates a package expression and creates a *derivation* from it. 
@@ -108,7 +108,7 @@ After building a package, the output of the build is placed in the *nix store*, 
 "Nix Build Daemon" -> "/nix/store/"."Package Output": Builds {style.animated: true}
 ```
 
-You can check on both your host system and VM for the existence of this directory and see it has *many* items. You'll also notice the directories all have a hash after the name, this is so no conflicts exist when building two version of the same package.
+You can check on both your host system and VM for the existence of this directory and see it has *many* items. You'll also notice the directories all have a hash after the name, this is so no conflicts exist when building two versions of the same package.
 
 <FileTree>
 - /nix/store/
@@ -117,7 +117,7 @@ You can check on both your host system and VM for the existence of this director
   - ...
 </FileTree>
 
-*Everything* nix builds is put in the nix store, when we do `nix shell` the package is built and placed in the nix store, and then the path to the `bin` folder of the package's output within the nix store is placed within the `PATH` environment variable. You may also notice that `result` in your config's directory is a symlink to within the store. 
+*Everything* nix builds is put in the nix store. When we do `nix shell`, the package is built and placed in the nix store, and then the path to the `bin` folder of the package's output within the nix store is placed within the `PATH` environment variable. You may also notice that `result` in your config's directory is a symlink to within the store. 
 
 The nix store is the single source of truth, everything else (even many things within the store itself) reference or symlink to it.
 
@@ -158,8 +158,7 @@ NixOS takes Nix a step further and stores *system files* within the store. This 
 "Environment Variables"."..." -> "/"."/run/current-system"
 ```
 
-
-This also makes *switching* your NixOS config easy. NixOS VMs cannot switch by default, but when you install this will apply. Switching is really just a matter of changing what symlinks point to as well as updating environment variables (there *are* other things NixOS does as well, especially for hardware and bootloaders, but the point is it knows how to perform those operations based on your config).
+This also makes *switching* your NixOS config easy. Switching is really just a matter of changing what symlinks point to as well as updating environment variables (there *are* other things NixOS does as well, especially for hardware and bootloaders, but the point is it knows how to perform those operations based on your config).
 
 ```d2
 "/run/current-system" -> "[hash]-system-path": Old link severed {
@@ -180,7 +179,7 @@ This diagram is a simplification, switching `/run/current-system` is only one pa
 NixOS also needs to update other paths, start/stop systemd services, potentially install a new bootloader, etc.
 </Aside>
 
-With NixOS, stuff like your `/etc` folder is effectively a package, and therefore we maintain the invariant that it must be able to be reproduced the exact same given the same set of inputs (your configuration). This is what we mean when we say NixOS creates reproducible systems, because we *build* them from the ground up every time there's no way for a unknown side effect to taint the system's functionality.
+With NixOS, stuff like your `/etc` folder is effectively a package, and therefore we maintain that it must be able to be reproduced the exact same given the same set of inputs (your configuration). Because we *build* them from the ground up every time, there's no way for a unknown side effect to taint the system's functionality.
 
 When we make a change to our config we don't need to rebuild everything of course. Nix is smart in that it knows what has and hasn't changed (because all packages are pure). So when we make one small change in, say, something that affects our `/etc/passwd`, we don't need to rebuild everything, because the dependencies of `/etc` never changed (except `passwd`), we can simply relink them the exact same.
 
@@ -190,7 +189,7 @@ These rules set forth by Nix and NixOS provide us with some great features.
 
 ### Binary Caches
 
-Binary caches are why we don't need to recompile Firefox or Plasma from scratch when we add them to our config. If a package exists in the remote cache (by default Nix has `cache.nixos.org` as the only one), we can simply download its output. And we're sure the output will work because the package is pure.
+Binary caches are why we don't need to recompile Firefox or Plasma from scratch when we add them to our config. If a package exists in the remote cache (by default Nix has `cache.nixos.org` as the only one), we can simply download its output (bundled in a NAR file). And we're sure the output will be the same because the package is pure.
 
 ```d2
 "/nix/store": {
@@ -206,7 +205,7 @@ Binary caches are why we don't need to recompile Firefox or Plasma from scratch 
 "Nix Build Daemon" <- "/nix/store"."python3": "No need to build!"
 ```
 
-`cache.nixos.org` isn't the only binary cache too! In fact, it's very easy to make your own system serve it's nix store using the `nix-serve` command.
+`cache.nixos.org` isn't the only binary cache too! In fact, it's very easy to make your own system serve its nix store using the `nix-serve` command.
 
 ```sh
 nix-serve --host * --port 8080
@@ -214,9 +213,7 @@ nix-serve --host * --port 8080
 
 This will allow other computers on the network to use your nix store to substitute packages if needed. Obviously there are security risks that can come with using a cache without knowing its reliability, Nix provides mechanisms to verify cache's identity to ensure trust.
 
-Personally I have two devices that use pretty similar NixOS configs, with many of the differences only being in hardware. By first building on my better computer and then hosting a cache off it, I not only don't have to build many packages on my other computer, I also can download any packages I would normally use `cache.nixos.org` for, which will be way faster over LAN!
-
-We'll also see that the installer ISO will use it's own store as a substiutor when building your full system, lessening the amount we have to build or download ourselves when installing.
+Personally I have two devices that use pretty similar NixOS configs, with many of the differences only being in hardware. By first building on my better computer and then hosting a cache off it, I not only don't have to build many packages on my other computer, I can also download any packages I would normally use `cache.nixos.org` for, which will be way faster over LAN!
 
 ### Remote Builders
 
@@ -224,7 +221,7 @@ Another advantage is we can use other computers to build Nix packages effortless
 
 ### Effortless VMs
 
-You may have noticed that our `nixos.qcow2` file is relatively small. That's because NixOS doesn't simply copy in the Nix store to the image, it actually uses QEMU's virtio feature to expose the *host system's* nix store directly to the VM. This means we don't have to rebuild as much if we delete `nixos.qcow2`, and also we don't have to create a huge file system image for our VM.
+You may have noticed that our `nixos.qcow2` file is relatively small. That's because NixOS doesn't simply copy the Nix store into the image, it actually uses QEMU's virtio feature to expose the *host system's* nix store directly to the VM. This means we don't have to rebuild as much if we delete `nixos.qcow2`, and also we don't have to create a huge file system image for our VM.
 
 ```d2
 "Host System": {
@@ -243,8 +240,7 @@ You may have noticed that our `nixos.qcow2` file is relatively small. That's bec
 }
 ```
 
-
-From a higher level, NixOS is also great for VMs because it can reliably produce images exactly how we want. I've used NixOS VMs to test my software in a different system.
+From a higher level, NixOS is also great for VMs because it can reliably produce images exactly how we want. I've used NixOS VMs many time to perform end-to-end tests on my software.
 
 The versatility of NixOS with VMs is so good that `nixpkgs` actually uses it to test every single package by running a variety of tests within a virtual machine in CI.
 
@@ -262,7 +258,7 @@ Writing CI scripts can get challenging, especially when there's no way to truly 
 
 ### No More Guides
 
-With NixOS, the intent and effect of a config is right there. No more guides saying "go here and edit this random rc file" or blah blah. Many times when you want to do something it's as simple as looking at (/stealing) someone else's configuration. I personally use [SourceGraph (tuned to Nix)](https://sourcegraph.com/search?q=lang:Nix+-repo:NixOS/*+-repo:nix-community/*) in order to find how other people configure things. There's also the NixOS option search to help you.
+With NixOS, the intent and effect of a config is right there. No more guides saying "go here and edit this random rc file" or blah blah. Many times when you want to do something it's as simple as looking at <del>/stealing</del> someone else's configuration. I personally use [SourceGraph (tuned to Nix)](https://sourcegraph.com/search?q=lang:Nix+-repo:NixOS/*+-repo:nix-community/*) in order to find how other people configure things. There's also the NixOS option search to help you.
 
 When someone asks how you did something in NixOS you can simply share the configuration snippet that does it.
 
@@ -274,7 +270,7 @@ When you install you'll also see that after booting you're given a list of previ
 
 ### Write Once, Configured Always
 
-Once you figure out how to do something with Nix, the chances it needs to be done again are slim (NixOS can always update to rename options, etc.). And with Git you never *lose* these changes so long as you commit, they'll always be there in your repo history ready to grab again just in case.
+Once you figure out how to do something with Nix, the chances it needs to be done again are slim (NixOS can always update to rename options, etc.). And with Git you never *lose* these changes so long as you commit. They will always be there in your repo history ready to grab again just in case.
 
 ## Flakes
 
@@ -282,13 +278,15 @@ Flakes were a controversial feature, before them we used channels. This guide is
 
 A flake is really just any `flake.nix` file in a folder or at the root of a git repository that can represent anything. When we run `nix run` or `nix shell` we're expected to pass `flake#output`, where `flake` can be a `.` for the current directory, `github:Author/Repo` for a github repo, or `nixpkgs` for nixpkgs. We can also configure custom aliases for flakes. We then pass the output we want. Depending on context we can omit `packages.` or `nixosConfigurations.`.
 
-Flakes define their dependencies based on `inputs`, which are links to other flakes to fetch in order to evaluate the current flake properly. The hashes of these other flakes are stored in `flake.lock` so that way we can make sure all the inputs are exactly what we expect.
+Flakes define their dependencies based on `inputs`, which are links to other flakes to fetch in order to evaluate the current flake properly. The hashes of these other flakes are stored in `flake.lock` so we can make sure all the inputs are exactly what we expect.
 
 Before flakes we had other ways of using Nix, but for this guide we'll stick to just them.
 
 ## Garbage Collection
 
-So, we know that the nix store holds *everything*. But how do we know when we don't need an entry in the store anymore? Nix has a special folder, `/nix/var/nix/gcroots` that holds many symlinks to the nix store.
+So, we know that the nix store holds *everything*. But how do we know when we don't need an entry in the store anymore? 
+
+Nix has a special folder, `/nix/var/nix/gcroots` that holds many symlinks to the nix store.
 
 ```d2
 "/nix/var/nix/gcroots": {
@@ -308,7 +306,7 @@ So, we know that the nix store holds *everything*. But how do we know when we do
 
 These symlinks represent *gcroots*. When we want to clean up our system, we look at these roots. Any store entry that isn't a descendant of them (remember how we know what entries depend on what other entries because we *have to* declare all dependencies), and delete them. This way we only delete anything that isn't being used actively.
 
-So, when comma downloads a command for us, the store entry that package is in (and any dependencies it references) are *not* a descendent of a `gcroot`, meaning when we garbage collect after running comma, the store entry and all of its dependencies (that aren't being used by something else that *is* under `gcroots`), will be deleted.
+So, when comma downloads a command for us, the store entry that package is in (and any dependencies it references) are *not* a descendent of a `gcroot`. Meaning when we garbage collect after running comma, the store entry we added and all of its dependencies (that aren't being used by something else that *is* under `gcroots`), will be deleted.
 
 ```d2
 "/nix/var/nix/gcroots": {
@@ -358,7 +356,8 @@ But what creates `gcroots`?
 - Anything we installed with `nix profile install` (`/nix/var/nix/gcroots/per-user`)
 - `result` symlinks from project directories (like our VM!) (`/nix/var/nix/gcroots/auto`)
 - Processes can hold roots as well (this is how `nix shell` works)
+- and more...
 
-## Finally
+## Now You Know
 
 Thank you for hearing my spiel. We're finally gonna install NixOS in the next chapter. Well... prepare our config to install it.
