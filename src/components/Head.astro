@@ -3,7 +3,7 @@ import type { Props } from '@astrojs/starlight/props';
 import StarlightHead from '@astrojs/starlight/components/Head.astro';
 import VtbotStarlight from 'astro-vtbot/components/starlight/Base.astro';
 
-const ogImageUrl = `${Astro.site}favicon.svg`;
+const ogImageUrl = `${Astro.site}og.png`;
 ---
 
 <VtbotStarlight {...Astro.props}>
@@ -12,7 +12,7 @@ const ogImageUrl = `${Astro.site}favicon.svg`;
   </StarlightHead>
   <meta property="og:image" content={ogImageUrl} />
   <meta property="og:image:alt" content="DGANG Logo - The Nix/NixOS logo with a star in the center" />
-  <meta property="og:image:width" content="512" />
-  <meta property="og:image:height" content="512" />
+  <meta property="og:image:width" content="535" />
+  <meta property="og:image:height" content="464" />
   <meta name="twitter:image" content={ogImageUrl} />
 </VtbotStarlight>
