@@ -15,30 +15,27 @@ In this guide we will...
 
 ## Secure Boot
 
-UEFI is a (relatively) new standard for firmware to follow. It offers a number of improvements over BIOS one of which being secure boot, but in order to understand how it works we'll need to know how UEFI boots.
+UEFI is a (relatively) new standard for firmware to follow. It offers a number of improvements over BIOS, one of which being secure boot. In order to understand how it works we'll need to know how UEFI boots.
 
-Bootable patitions of a disk are marked with the "EFI Boot" partition type (`ef00`) (If you remember when we installed initially, this is what we typed in cgdisk to make our boot partition). On this partition, the firmware searches for `.EFI` files, which are Windows PE binaries that execute the bootloader. If you remember we needed to mount a `/boot` folder for NixOS to install, this is why; NixOS needs to write its bootloader (GRUB by default) so the firmware can see it.
+Bootable patitions of a disk are marked with the "EFI Boot" partition type (`ef00`) (If you remember when we installed initially, this is what we typed in `cgdisk` to make our boot partition). On this partition, the firmware searches for `.EFI` files, which are Windows PE binaries that execute the bootloader. If you remember we needed to mount a `/boot` folder for NixOS to install, this is why; NixOS needs to write its bootloader (GRUB by default) so the firmware can see it.
 
 **Secure Boot** is the practice of signing these EFI binaries with cryptographic keys, and telling the firmware to only boot EFI binaries that are signed with these keys. Before executing a bootloader, the firmware will check that the binary is signed with a key in the Allow DB, `DB` and not in the disallow DB, `DBX`. The specifics of how the firmware maintains the databases is a bit more complicated but for our use case this is all we need to know.
 
 ```d2
 direction: down
 
-
-
 "ef00 FAT32 Partition": {
   "BOOT.EFI" : { shape: page }
 }
 
-"TPM SecureBoot DB": { shape: parallelogram }
-"Is The Key Valid and not in DBX?" : { shape: diamond }
+"Is The Signature Valid and not in DBX?" : { shape: diamond }
 
 "ef00 FAT32 Partition"."BOOT.EFI" -> "Firmware" : Reads
 "ef00 FAT32 Partition"."BOOT.EFI" <- "TPM SecureBoot DB" : Signed With Keys In
 "TPM SecureBoot DB" <-> "Firmware" : Reads/Writes
-"Firmware" -> "Is The Key Valid and not in DBX?" : When Booting
-"Is The Key Valid and not in DBX?" -> "Execute the binary" : Yes
-"Is The Key Valid and not in DBX?" -> "SecureBoot violation! Refusing to execute the binary" : No
+"Firmware" -> "Is The Signature Valid and not in DBX?" : When Booting
+"Is The Signature Valid and not in DBX?" -> "Execute the binary" : Yes
+"Is The Signature Valid and not in DBX?" -> "SecureBoot violation! Refusing to execute the binary" : No
 ```
 
 ## LUKS Disk Encryption
@@ -51,7 +48,7 @@ By encrypting data at rest on your disk, you can stop people from physically tak
 sudo cryptsetup luksOpen /dev/sda1 cryptroot
 ```
 
-Our first argument to `luksOpen` is the device we want to open with LUKS. The second is the *mapped* name that the device we'll use to interface with the device.
+Our first argument to `luksOpen` is the device we want to open with LUKS. The second is the *mapped* name that we'll use to interface with the device.
 
 We can then do anything with the mapped device located at `/dev/mapper/cryptroot` as if it was the actual disk partition. For example we could create a filesystem.
 
@@ -61,10 +58,9 @@ sudo mkfs.ext4 /dev/mapper/cryptroot
 
 Of course we don't want to type in a command to LUKS open our disk every boot, we can instead tell the initrd that we want the disk unlocked during boot which will prompt us for the password every boot. We'll get into how to do this in the actual steps.
 
-Usually users will choose to encrypt their main partition and any swap partitions they have set up. The boor partition **should not** be encrypted as the firmware needs to find the bootloader as outlined in the secure boot section.
+Usually users will choose to encrypt their main partition and any swap partitions they have set up. The boot partition **should not** be encrypted as the firmware needs to find the bootloader as outlined in the secure boot section.
 
 ```d2
-
 "luksOpen" : { shape: step }
 "/dev/sda" : { shape: cylinder }
 "/dev/mapper/cryptroot" : { shape: page }
@@ -81,9 +77,9 @@ Usually users will choose to encrypt their main partition and any swap partition
 
 ### Opening LUKS Volumes with TPM-backed Keys
 
-Opening the LUKS device with a password every boot can get quite annoying, espacially if you have multiple with different passwords. The trusted platform module (TPM) of our computer instead allows us to store decryption keys for the disk and implicitly *release* them to our initrd on boot, skipping the need to enter the password. This does mean our decryption is now tied to our exact hardware, but becuase LUKS allows for multiple decryption methods we'll still be able to use a password to decrypt the disk as well.
+Opening the LUKS device with a password every boot can get quite annoying, espacially if you have multiple volumes with different passwords. The trusted platform module (TPM) of our device instead allows us to store decryption keys for the disk and implicitly *release* them to our initrd on boot, skipping the need to enter the password. This does mean our decryption is now tied to our exact hardware, but becuase LUKS allows for multiple decryption methods we'll still be able to use a password to decrypt the disk as well.
 
-In addition, storing the decryption keys on the TPM allows us to specify conditions that must be met for the TPM releases the keys for decryption. The most interesting of these being PCR `7`, which requires secure boot to be enabled and verified. This means that both our firmware and out actual OS depends on our EFI binary being signed, awesome!
+In addition, storing the decryption keys on the TPM allows us to specify conditions that must be met befor the TPM releases the keys for decryption. The most interesting of these being PCR `7`, which requires secure boot to be enabled and verified. This means that both our firmware and out actual OS depends on our EFI binary being signed, awesome!
 
 ## NixOS Impermanence
 
@@ -91,11 +87,13 @@ While NixOS offers reproducible builds of your system it doesn't prevent side ef
 
 Impermanence is a NixOS pattern that involves deleting any non-nix managed state every reboot. Of course, there are things that you'd like to keep the state of such as your browser. The Nix community has put together an [impermanence NixOS module](https://github.com/nix-community/impermanence) to assist in persisting certain directories and files between boots.
 
-In terms of removing unwanted files each reboot, this is achieved by mounting a `tmpfs` (file system that uses RAM) to `/` instead of your normal drive. Your normal drive is then mounted to `/nix` so the nix store is persisted, from there NixOS handles setting every other path each boot and making a functioning system.
+In terms of removing unwanted files each reboot, this is achieved by mounting a `tmpfs` (file system that uses free memory) to `/` instead of your normal drive. Your normal drive is then mounted to `/nix` so the nix store is persisted, from there NixOS handles setting every other path each boot and making a functioning system.
+
+When shutting down your computer, since `/` is a `tmpfs`, any paths not explicitly allowed by you will be cleared.
 
 ## Setting Up Secureboot With Lanzaboote
 
-Alright, now that we understand these features lets implement them as a NixOS module. We'll set up secure boot first as it doesn't need a re-install to set up.
+Alright, now that we understand these features let's implement each of them as a NixOS module. We'll set up secure boot first as it doesn't need a re-install to set up.
 
 To set up secure boot we'll use a nix community bootloader called [Lanzaboote](https://github.com/nix-community/lanzaboote), which is a set of tools and NixOS modules.
 
@@ -119,7 +117,7 @@ To start out we'll need the Lanzaboote flake added as an input to our flake.
 }
 ```
 
-Next up we'll need to make a new NixOS module where we disable systemd boot and enable lanzaboote. 
+Next up we'll need to make a new NixOS module where we disable systemd boot and enable Lanzaboote. 
 
 ```nix title=secureboot.nix
 {lib, inputs, ...}: {
@@ -127,7 +125,7 @@ Next up we'll need to make a new NixOS module where we disable systemd boot and 
 
   boot = {
     loader.systemd-boot.enable = lib.mkForce false;
-    bootspec.enable = true; # Bootspec is needed for lanzaboote
+    bootspec.enable = true; # Bootspec is needed for Lanzaboote
 
     lanzaboote = {
       enable = true;
@@ -137,25 +135,25 @@ Next up we'll need to make a new NixOS module where we disable systemd boot and 
 }
 ```
 
-*Before* building we'll need to create the keys lanzaboote will use to sign the EFI binary. We'll use the `sbctl` program for this.
+*Before* building we'll need to create the keys Lanzaboote will use to sign the EFI binary. We'll use the `sbctl` program for this.
 
 ```sh
 , -s sbctl
 sudo sbctl create-keys
 ```
 
-This will create our keys in `/var/lib/sbctl` as lanzaboote expect. We can now rebuild our system with the new module and lanzaboote should sign the binaries. We can verify the needed EFI binaries are signed with sbctl as well.
+This will create our keys in `/var/lib/sbctl` as Lanzaboote expects. We can now rebuild our system with the new module and Lanzaboote should sign the binaries. We can verify that the needed EFI binaries are signed with sbctl as well.
 
 ```sh
 sudo sbctl verify
 ```
 
-The files `/boot/EFI/BOOT/BOOTX64.EFI` and `/boot/EFI/Linux/nixos-generation-###-[some-hash].EFI` should be listed as signed, they are then you're good to go!
+The files `/boot/EFI/BOOT/BOOTX64.EFI` and `/boot/EFI/Linux/nixos-generation-###-[some-hash].EFI` should be listed as signed.
 
-We've signed our EFI binaries, now we need to inform the platform of our keys and tell it to enforce them. To do this reboot your system into the UEFI interface (you can select "reboot into firmware interface" in the generation selection screen to do this). From here it'll depend on your device, usually under "Security" or "Boot" options there should be an option to enable secure boot, set this to "Enabled" and then looks for options to manage the `PK`, `KEK`, and `DB`. You'll want to clear each of these sections, ensuring they're reset.
+We've signed our EFI binaries, now we need to inform the platform of our keys and tell it to enforce them. To do this reboot your system into the UEFI interface (you can select "reboot into firmware interface" in the generation selection screen to do this). From here it'll depend on your device, usually under "Security" or "Boot" options there should be an option to enable secure boot, set this to "Enabled" and then look for options to manage the `PK`, `KEK`, and `DB`. You'll want to clear each of these sections, ensuring they're reset.
 
 <Aside type="caution">
-  Do **not** delete DBX! This is a deny list of known exploited keys and clearing it means your system will trust them!
+  Do **not** clear DBX! This is a deny list of known exploited keys and clearing it means your system will trust them!
 </Aside>
 
 By enabling secure boot and deleting these keys we've entered our firmware into setup mode for secure boot. The last step is to enroll our secure boot keys so the firmware knows what to trust. 
@@ -172,7 +170,7 @@ sudo sbctl enroll-keys --microsoft
 ```
 
 <Aside>
-  `--microsoft` here enrolls some Microsoft keys that some firmware developers use for *option ROMS* (these are the ROMS used for the firmware interface where you set low-level hardware settings.
+  `--microsoft` here enrolls some Microsoft keys that some firmware developers use for *option ROMS* (these are the ROMS used for the firmware interface where you set low-level hardware settings)
 
   You *could* not add this flag if you're absolutely certain that your option ROMs don't rely on them, but better safe than sorry.
 </Aside>
@@ -193,7 +191,7 @@ boot.initrd.luks.devices."cryptroot".device = "/dev/disk/by-uuid/[some-uuid]";
 
 ## Setting Up Impermanence
 
-The most drastic of these features is impermanence. This will require a bit more work depending on your specific use cases as you'll need to *manually specify which paths you want to keep*. This includes and application or game save directories.
+The most drastic of these features is impermanence. This will require a bit more work depending on your specific use cases as you'll need to *manually specify which paths you want to keep*. This includes any application or game save directories.
 
 To get started, we'll add the Nix Community impermanence flake as an input.
 
@@ -235,7 +233,7 @@ The NixOS impermanence module provides us the `environment.persistence` option, 
 
 ```d2
 "/var/log" -> "/nix/persist-cache/var/log" : Bind Mounted To
-"/var/tmp" -> "/dev/mem" : In a tmpfs, will be dropped at shutdown { style.stroke-dash: 5 }
+"/var/tmp" -> "Memory" : In a tmpfs, will be dropped at shutdown { style.stroke-dash: 5 }
 ```
 
 This guide will have you set up 2 persist locations, `/nix/persist` and `/nix/persist-cache`. You'll use `/nix/persist` to store data you'd want to back up, this may include your library folders such as `~/Document` and `~/Pictures`. It might also include certain applications' state directories like `.mozilla` for Firefox. `/nix/persist-cache` will be used for data that you want to keep but not back up, this may be things like logs, package manager caches, or your trash folder.
@@ -331,7 +329,7 @@ First, we'll need to setup a `machine-id`, this is used by various networked ser
  `config` here is a reference to your own NixOS config, it's useful when you want to set options depending on what other options are set.
 </Aside>
 
-Next, we'll disable `mutableUsers`. Currently we allow the changing of user passwords and other user data. User information like this is stored in `/etc/passwd` and `/etc/shadow`. Instead of persisting these, we'll instruct NixOS to use a hash we generate manually.
+Next, we'll disable `mutableUsers`. Currently we allow the changing of user passwords and other user data. User information like this is stored in `/etc/passwd` and `/etc/shadow`. Instead of persisting these, we'll instruct NixOS to use a password hash we generate manually.
 
 We'll create a new directory in `/nix/persist` called `secure`, this directory will only be accessible to root for security reasons, we'll place a few other things here later as well.
 
@@ -352,7 +350,7 @@ We'll create a new directory in `/nix/persist` called `secure`, this directory w
 ```
 
 <Aside>
-This guide is having you use the same password for both your user and the root user, feel free to change the paths to be different if you need to. Just remember later you'll need to generate both files!
+ This guide is having you use the same password for both your user and the root user, feel free to change the paths to be different if you want to. Just remember you'll need to generate *both* files later!
 </Aside>
 
 Additionally, we'll store our secure boot keys in `/nix/persist/secure` as well. Let's tell lanzaboote to use that directory instead.
@@ -397,7 +395,7 @@ We've now set up our module for impermanence. Again, don't add this module to yo
 
 We'll now reinstall NixOS with our new features enabled. To start out I'd recommend backing up anything important to you. Particularly, you should back up your secure boot keys (located in `/var/lib/sbctl`) to a flash drive *you'll be able to mount during install*. We'll re-use these keys so you won't need to enroll new ones. 
 
-Since you've already installed before this section is going to hold your hand a bit less, if you ever get stuck remember you can look back [at the normal installation chapter](/chapters/7) for reference.
+Since you've already installed before, this section is going to hold your hand a bit less. If you ever get stuck remember you can look back [at the normal installation chapter](/chapters/7) for reference.
 
 To start out, [create and flash your installer ISO](/chapters/6/#building-the-iso), you'll want to re-create it so it has the most recent version of your flake.
 
@@ -411,7 +409,7 @@ In the installer's shell, use `cgdisk` to partition your drive, you can refer to
 
 ### LUKS Volume Setup
 
-We'll now format our new partitions for LUKS, similar to chapter 7 `PARTITION_PATH` here will refer to the `/dev` file for your disk.
+We'll now format our new partitions for LUKS. Similar to chapter 7, `PARTITION_PATH` here will refer to the `/dev` file for your disk.
 
 Set up LUKS for your main partition (3 **if you did swap**, 2 otherwise)
 
@@ -421,7 +419,7 @@ sudo cryptsetup luksFormat PARTITION_PATH
 
 You'll be prompted to enter a passphrase, make sure it's a memorable one as **you will need it if for whatever reason the volume can't be unlocked with TPM**.
 
-In addition, set up LUKS for your swap partition if your set it up.
+In addition, set up LUKS for your swap partition if you've set up swap.
 
 Now we'll LUKS open our newly created volumes, `cryptroot` here can be changed to whatever you prefer, it won't impact too much.
 
@@ -456,17 +454,17 @@ We've now set up our disk for install.
 
 ### Mounting our Filesystems
 
-We now need to set up `/mnt`, unlike normal installation we won't be mounting our main partition first, instead we'll mount a tmpfs to mimick our impermanence setup.
+Now to set up `/mnt`, unlike the normal installation we won't be mounting our main partition first. Instead, we'll be mounting a tmpfs to mimick our impermanence setup.
 
 ```sh
 sudo mount -t tmpfs -o "size=4G" tmp /mnt
 ```
 
 <Aside>
-We're dedicating 4GB of memory to the tmpfs because the build will take quite a bit. This is *not* the size we'll always have.
+We're dedicating 4GB of memory to the tmpfs because the initial build will take quite a bit. This is *not* the size we'll use after install.
 </Aside>
 
-Now we'll create mount points for our boot and main partitions.
+Next create mount points for our boot and main partitions.
 
 ```sh
 sudo mkdir -p /mnt/boot
@@ -496,10 +494,11 @@ Next, plug in and mount your flash drive with your secure boot keys, this will m
 sudo mkdir /flash
 sudo mount FLASHDRIVE_PATH /flash
 sudo cp -r /flash/secureboot /mnt/nix/persist/secure
+sudo umount /flash
 ```
 
 <Aside type="caution">
-  Note your keys **must** be in `/mnt/nix/persist/secure/secureboot`, otherwise lanzaboote won't be able to find it
+  Note your keys **must** be in `/mnt/nix/persist/secure/secureboot`, otherwise lanzaboote won't be able to find them.
 </Aside>
 
 Then, we'll need to generate your user account password, you can use `mkpasswd` for this.
@@ -521,7 +520,7 @@ sudo chmod -R 644 /mnt/nix/persist/flake
 
 Now edit your system to import the `imperm.nix` module from earlier in this chapter.
 
-Finally, edit your `hardware-configuration.nix`. You'll want to remove your old `fileSystems` and `swapDevices` sections and replace them to reflect the impermanence setup you've created.
+Finally, edit your `hardware-configuration.nix`. You'll want to remove your old `fileSystems` and `swapDevices` sections and replace them to use the impermanence setup you've created.
 
 ```nix title="hardware-configuration.nix" "BOOT_PARTITION" "MAIN_PARTITION" "SWAP_PARTITION" "cryptroot" "cryptswap"
 {config, pkgs, lib, modulesPath, ...}: {
@@ -529,7 +528,7 @@ Finally, edit your `hardware-configuration.nix`. You'll want to remove your old 
 
   fileSystems."/" = {
     fsType = "tmpfs";
-    # Adjust the size you want for the tmpfs as needed, you shouldn't need to much but it's good to leave overhead
+    # Adjust the size you want for the tmpfs as desired, you shouldn't need too much but it's good to leave overhead
     options = ["size=512M" "mode=755"];
     neededForBoot = true;
   };
@@ -537,7 +536,7 @@ Finally, edit your `hardware-configuration.nix`. You'll want to remove your old 
   # Stuff in /home may need more space, so we create a tmpfs there with a larger quota
   fileSystems."/home" = {
     fsType = "tmpfs";
-    # Also adjust as needed
+    # Also adjust as desired
     options = ["size=2G"];
     neededForBoot = true;
   };
@@ -557,7 +556,7 @@ Finally, edit your `hardware-configuration.nix`. You'll want to remove your old 
 
   boot.initrd.luks.devices."cryptroot".device = "MAIN_PARTITION";
   
-  # If You use swap, you'll need to set it up here too
+  # If you use swap, you'll need to set it up here too
   boot.initrd.luks.devices."cryptswap".device = "SWAP_PARTITION";
   swapDevices = [
     {device = "/dev/mapper/cryptswap";}
@@ -567,21 +566,21 @@ Finally, edit your `hardware-configuration.nix`. You'll want to remove your old 
 }
 ```
 
-With those changes made, we can now build and install our system. We'll be editing our install command a bit here to not prompt for a root password, as we're setting that via the `hashedPasswordFile` option.
+With those changes made, we can build and install our system. We'll be editing our install command a bit here to not prompt for a root password, as we're setting that already via the `hashedPasswordFile` option.
 
-```sh
-sudo nixos-install --flake .# --root /mnt --no-root-passwd --no-channel-copy
+```sh "YOURSYSTEMNAME"
+sudo nixos-install --flake .#YOURSYSTEMNAME --root /mnt --no-root-passwd --no-channel-copy
 ```
 
 This will build your system and install NixOS to our drive!
 
 ## First Boot
 
-**Before** booting into the main system, make sure to go into your UEFI settings and enable secure boot. This will both confirm that lanzaboote is still working and also allows us to perform TPM-backed LUKS enrollment.
+**Before** booting into the main system, make sure to go into your UEFI settings and enable secure boot. This will both confirm that lanzaboote is still working and allow us to perform TPM-backed LUKS key enrollment.
 
 ### Enrolling TPM Keys for LUKS
 
-Boot into your system, you'll need to enter the passphrase for your LUKS volumes you set up in order to boot. Don't worry, we'll make this automatic in this section.
+Boot into your system, you'll need to enter the passphrase for your LUKS volumes in order to boot. Don't worry, we'll make this automatic in this section.
 
 Get to a terminal and use the `systemd-cryptenroll` command to add a TPM-backed key to you LUKS volume. Replace `PARTITION_PATH` here with the *actual* device path of your main drive (so **not** the `/dev/mapper` path).
 
@@ -591,7 +590,9 @@ sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+2+7+12 PARTITION_PATH
 
 If you set up swap, you'll also need to run this command for that partition as well.
 
-With that you've enrolled the keys! When you boot next, your initrd will automatically know to try the TPM for decryption keys first, meaning you won't need to enter your password. In addition, because we used PCR 7 (secure boot state), your TPM will only release the decryption keys if your device is booting using a signed UEFI executable.
+With that you've enrolled the keys! When you boot next, your initrd will automatically know to try the TPM for decryption keys first, meaning you won't need to enter your password. 
+
+In addition, because we used PCR 7 (secure boot state), your TPM will only release the decryption keys if your device is booting using a signed UEFI executable.
 
 ### Cleaning Up
 
@@ -608,7 +609,7 @@ We'll assume you're going to be persisting a path called `/my/path`.
    ```sh "/my/path"
    mv /my/path /my/path.bak
    ```
-2. Add the path to `environment.persistence`
+2. Add the path to `environment.persistence` in your config
 3. Switch your system to have the impermanence module create bind mounts
 4. Move the *contents* of the backup directory back
    ```sh "/my/path"
