@@ -1,0 +1,625 @@
+---
+title: Secure Boot, LUKS Encryption, and Impermanence
+description: Guide to setting up UEFI Secure Boot, Full LUKS disk encryption, and NixOS impermanence.
+---
+
+import { Steps, FileTree, Aside } from '@astrojs/starlight/components';
+
+Currently we've setup our system without secure boot or disk encryption, while acceptable for some use cases you may want to consider setting it up, especially on a mobile device like a laptop. In addition, your system persists potentially unwanted state between boots, which is against the general goal of NixOS.
+
+In this guide we will...
+
+1. Explain Secure Boot, LUKS Encryption, and NixOS Impermanence
+2. Understand how we set up each of these features on NixOS
+3. Re-install NixOS with these features set up
+
+## Secure Boot
+
+UEFI is a (relatively) new standard for firmware to follow. It offers a number of improvements over BIOS one of which being secure boot, but in order to understand how it works we'll need to know how UEFI boots.
+
+Bootable patitions of a disk are marked with the "EFI Boot" partition type (`ef00`) (If you remember when we installed initially, this is what we typed in cgdisk to make our boot partition). On this partition, the firmware searches for `.EFI` files, which are Windows PE binaries that execute the bootloader. If you remember we needed to mount a `/boot` folder for NixOS to install, this is why; NixOS needs to write its bootloader (GRUB by default) so the firmware can see it.
+
+**Secure Boot** is the practice of signing these EFI binaries with cryptographic keys, and telling the firmware to only boot EFI binaries that are signed with these keys. Before executing a bootloader, the firmware will check that the binary is signed with a key in the Allow DB, `DB` and not in the disallow DB, `DBX`. The specifics of how the firmware maintains the databases is a bit more complicated but for our use case this is all we need to know.
+
+```d2
+direction: down
+
+
+
+"ef00 FAT32 Partition": {
+  "BOOT.EFI" : { shape: page }
+}
+
+"TPM SecureBoot DB": { shape: parallelogram }
+"Is The Key Valid and not in DBX?" : { shape: diamond }
+
+"ef00 FAT32 Partition"."BOOT.EFI" -> "Firmware" : Reads
+"ef00 FAT32 Partition"."BOOT.EFI" <- "TPM SecureBoot DB" : Signed With Keys In
+"TPM SecureBoot DB" <-> "Firmware" : Reads/Writes
+"Firmware" -> "Is The Key Valid and not in DBX?" : When Booting
+"Is The Key Valid and not in DBX?" -> "Execute the binary" : Yes
+"Is The Key Valid and not in DBX?" -> "SecureBoot violation! Refusing to execute the binary" : No
+```
+
+## LUKS Disk Encryption
+
+By encrypting data at rest on your disk, you can stop people from physically taking the disk and reading off of it. For stationary devices like desktops this may not be as important but for mobile devices such as laptops this can be a great help in improving security.
+
+**LUKS** is a standard for Linux disk encryption that allows for multiple keys. It works on the *block device* level, meaning any filesystem can very easily be encrypted and mapped transparently. Instead of using a device such as `/dev/sda1` directly we'd first LUKS open it with `cryptsetup`.
+
+```sh "/dev/sda1" "cryptroot"
+sudo cryptsetup luksOpen /dev/sda1 cryptroot
+```
+
+Our first argument to `luksOpen` is the device we want to open with LUKS. The second is the *mapped* name that the device we'll use to interface with the device.
+
+We can then do anything with the mapped device located at `/dev/mapper/cryptroot` as if it was the actual disk partition. For example we could create a filesystem.
+
+```sh "cryptroot"
+sudo mkfs.ext4 /dev/mapper/cryptroot
+```
+
+Of course we don't want to type in a command to LUKS open our disk every boot, we can instead tell the initrd that we want the disk unlocked during boot which will prompt us for the password every boot. We'll get into how to do this in the actual steps.
+
+Usually users will choose to encrypt their main partition and any swap partitions they have set up. The boor partition **should not** be encrypted as the firmware needs to find the bootloader as outlined in the secure boot section.
+
+```d2
+
+"luksOpen" : { shape: step }
+"/dev/sda" : { shape: cylinder }
+"/dev/mapper/cryptroot" : { shape: page }
+"Normal Programs" : { 
+  shape: parallelogram 
+  style.multiple: true
+}
+
+"/dev/sda" <- "luksOpen" : Unlocks the partition
+"luksOpen" -> "/dev/mapper/cryptroot" : Creates Map Device
+"/dev/sda" <-> "/dev/mapper/cryptroot" : LUKS Maps all operations
+"/dev/mapper/cryptroot" <-> "Normal Programs" : Interfaces with LUKS volume
+```
+
+### Opening LUKS Volumes with TPM-backed Keys
+
+Opening the LUKS device with a password every boot can get quite annoying, espacially if you have multiple with different passwords. The trusted platform module (TPM) of our computer instead allows us to store decryption keys for the disk and implicitly *release* them to our initrd on boot, skipping the need to enter the password. This does mean our decryption is now tied to our exact hardware, but becuase LUKS allows for multiple decryption methods we'll still be able to use a password to decrypt the disk as well.
+
+In addition, storing the decryption keys on the TPM allows us to specify conditions that must be met for the TPM releases the keys for decryption. The most interesting of these being PCR `7`, which requires secure boot to be enabled and verified. This means that both our firmware and out actual OS depends on our EFI binary being signed, awesome!
+
+## NixOS Impermanence
+
+While NixOS offers reproducible builds of your system it doesn't prevent side effects from occuring. This mostly manifests when applications write config files to places like `~/.config` or state to places like `~/.local/share`. 
+
+Impermanence is a NixOS pattern that involves deleting any non-nix managed state every reboot. Of course, there are things that you'd like to keep the state of such as your browser. The Nix community has put together an [impermanence NixOS module](https://github.com/nix-community/impermanence) to assist in persisting certain directories and files between boots.
+
+In terms of removing unwanted files each reboot, this is achieved by mounting a `tmpfs` (file system that uses RAM) to `/` instead of your normal drive. Your normal drive is then mounted to `/nix` so the nix store is persisted, from there NixOS handles setting every other path each boot and making a functioning system.
+
+## Setting Up Secureboot With Lanzaboote
+
+Alright, now that we understand these features lets implement them as a NixOS module. We'll set up secure boot first as it doesn't need a re-install to set up.
+
+To set up secure boot we'll use a nix community bootloader called [Lanzaboote](https://github.com/nix-community/lanzaboote), which is a set of tools and NixOS modules.
+
+To start out we'll need the Lanzaboote flake added as an input to our flake.
+
+```nix title=flake.nix ins={4-5,11}
+{
+  inputs = {
+    # ...
+    lanzaboote.url = "github:nix-community/lanzaboote";
+    lanzaboote.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = inputs @ {
+    nixpkgs,
+    # ...
+    lanzaboote,
+  }: {
+    # ...
+  };
+}
+```
+
+Next up we'll need to make a new NixOS module where we disable systemd boot and enable lanzaboote. 
+
+```nix title=secureboot.nix
+{lib, inputs, ...}: {
+  imports = [inputs.lanzaboote.nixosModules.lanzaboote];
+
+  boot = {
+    loader.systemd-boot.enable = lib.mkForce false;
+    bootspec.enable = true; # Bootspec is needed for lanzaboote
+
+    lanzaboote = {
+      enable = true;
+      pkiBundle = lib.mkDefault "/var/lib/sbctl"; # We'll change this to a persisted directory when we turn on impermanence
+    };
+  };
+}
+```
+
+*Before* building we'll need to create the keys lanzaboote will use to sign the EFI binary. We'll use the `sbctl` program for this.
+
+```sh
+, -s sbctl
+sudo sbctl create-keys
+```
+
+This will create our keys in `/var/lib/sbctl` as lanzaboote expect. We can now rebuild our system with the new module and lanzaboote should sign the binaries. We can verify the needed EFI binaries are signed with sbctl as well.
+
+```sh
+sudo sbctl verify
+```
+
+The files `/boot/EFI/BOOT/BOOTX64.EFI` and `/boot/EFI/Linux/nixos-generation-###-[some-hash].EFI` should be listed as signed, they are then you're good to go!
+
+We've signed our EFI binaries, now we need to inform the platform of our keys and tell it to enforce them. To do this reboot your system into the UEFI interface (you can select "reboot into firmware interface" in the generation selection screen to do this). From here it'll depend on your device, usually under "Security" or "Boot" options there should be an option to enable secure boot, set this to "Enabled" and then looks for options to manage the `PK`, `KEK`, and `DB`. You'll want to clear each of these sections, ensuring they're reset.
+
+<Aside type="caution">
+  Do **not** delete DBX! This is a deny list of known exploited keys and clearing it means your system will trust them!
+</Aside>
+
+By enabling secure boot and deleting these keys we've entered our firmware into setup mode for secure boot. The last step is to enroll our secure boot keys so the firmware knows what to trust. 
+
+<Aside type="tip">
+  Although what we're going to do with disk encryption will help, you should also set a password for your firmware interface so bad actors cannot simply disable Secure Boot and bypass it.
+</Aside>
+
+Boot your system and get to a terminal, use `sbctl` to enroll our keys into the EFI.
+
+```sh
+, -s sbctl
+sudo sbctl enroll-keys --microsoft
+```
+
+<Aside>
+  `--microsoft` here enrolls some Microsoft keys that some firmware developers use for *option ROMS* (these are the ROMS used for the firmware interface where you set low-level hardware settings.
+
+  You *could* not add this flag if you're absolutely certain that your option ROMs don't rely on them, but better safe than sorry.
+</Aside>
+
+Reboot your device, secure boot keys should now be enrolled!
+
+## LUKS On NixOS
+
+LUKS is the easiest of these three to set up on NixOS. In fact we actually **don't have to do any prep before install**. Telling NixOS to LUKS open a given partition is as simple as changing `device` in our `filesystem."/nix"` attr set to point to our mapped device name and telling initrd that the device should be LUKS opened at boot.
+
+```nix {1-2} "cryptroot" "[some-uuid]"
+# Don't actually make these changes! 
+# This will be done later during install!
+
+filesystems."/nix".device = "/dev/mapper/cryptroot";
+boot.initrd.luks.devices."cryptroot".device = "/dev/disk/by-uuid/[some-uuid]";
+```
+
+## Setting Up Impermanence
+
+The most drastic of these features is impermanence. This will require a bit more work depending on your specific use cases as you'll need to *manually specify which paths you want to keep*. This includes and application or game save directories.
+
+To get started, we'll add the Nix Community impermanence flake as an input.
+
+```nix title=flake.nix ins={4,10}
+{
+  inputs = {
+    # ...
+    imperm.url = "github:nix-community/impermanence";
+  };
+
+  outputs = inputs @ {
+    nixpkgs,
+    # ...
+    imperm,
+  }: {
+    # ...
+  };
+}
+```
+
+Now we'll create our module for impermanence, keep in mind we *do not want to add this module yet*. We'll add it to our system during install.
+
+The NixOS impermanence module provides us the `environment.persistence` option, which sets which directories in our file system will be persisted. The names of this attr set describe *where* to persist these files, any `directories` or `files` set for it will be *bind mounted*.
+
+```nix title="imperm.nix" "/nix/persist-cache"
+{inputs, ...}: {
+  imports = [inputs.imperm.nixosModules.default];
+
+  environment.persistence."/nix/persist-cache" = {
+    enable = true;
+    hideMounts = true; # Cleans up the `mount` command to not show these bind mounts
+    directories = [
+      "/var/log" # Will be bind mounted to /nix/persist-cache/var/log on boot
+      # ...
+    ];
+  };
+}
+```
+
+```d2
+"/var/log" -> "/nix/persist-cache/var/log" : Bind Mounted To
+"/var/tmp" -> "/dev/mem" : In a tmpfs, will be dropped at shutdown { style.stroke-dash: 5 }
+```
+
+This guide will have you set up 2 persist locations, `/nix/persist` and `/nix/persist-cache`. You'll use `/nix/persist` to store data you'd want to back up, this may include your library folders such as `~/Document` and `~/Pictures`. It might also include certain applications' state directories like `.mozilla` for Firefox. `/nix/persist-cache` will be used for data that you want to keep but not back up, this may be things like logs, package manager caches, or your trash folder.
+
+The following config will have recommended paths to keep in each persist directory.
+
+```nix title="imperm.nix" "YOURNAME"
+{inputs, ...}: {
+  imports = [inputs.imperm.nixosModules.default];
+
+  environment.persistence."/nix/persist-cache" = {
+    enable = true;
+    hideMounts = true; # Cleans up the `mount` command to not show these bind mounts
+    directories = [
+      "/var/log"
+      "/var/lib/bluetooth"
+      "/var/lib/nixos"
+      "/var/lib/systemd/coredump"
+      "/var/lib/systemd/backlight"
+      "/var/lib/systemd/timers"
+      "/var/lib/systemd/rfkill"
+      {
+        directory = "/var/lib/colord";
+        user = "colord"; # Needs to be non-root
+        group = "colord";
+        mode = "u=rwx,g=rx,o=";
+      }  
+    ];
+    # Automatically sets YOURNAME as the owner of the mount
+    users.YOURNAME.directories = [
+      ".cache"
+      "local/share/Steam" # If you have steam
+      "local/share/Trash"
+      ".config/kdeconnect" # If you use KDE connect
+    ];
+  };
+
+  environment.persistence."/nix/persist" = {
+    enable = true;
+    hideMounts = true;
+    directories = [
+      "/etc/NetworkManager/system-connections" # If you use network manager for connections
+    ];
+    users.YOURNAME.directories = [
+      "Documents"
+      "Pictures"
+      "Videos"
+      "Downloads"
+      "Music"
+      ".mozilla" # If you use Firefox
+      {
+        directory = ".gnupg";
+        mode = "0700";
+      }
+      {
+        directory = ".ssh";
+        mode = "0700";
+      }
+      {
+        directory = ".nixops";
+        mode = "0700";
+      }
+      {
+        directory = ".local/share/keyrings";
+        mode = "0700";
+      }
+    ];
+  };
+}
+```
+
+I heavily encourage you to look through your current home folder and find directories and files you may want to keep, determine if they should be backed up or not, and then place them in either persist location. Due to us setting up a tmpfs on `/`, you may want to put any directories that may be large in `/nix/persist-cache` as well, to prevent the relatively small amount of space from getting filled up.
+
+### Additional Setup
+
+Unsuprisingly, not persisting your entire root fs will require some changes to make everything happy.
+
+First, we'll need to setup a `machine-id`, this is used by various networked services to uniquely identify the device. We'll derive our machine ID from our hostname and have NixOS link it for us.
+
+```nix title="imperm.nix" ins={2,8}
+{
+  config,
+  inputs,
+  ...
+}: {
+  # ...
+
+  environment.etc."machine-id".text = builtins.hashString "md5" config.networking.hostName;
+}
+```
+
+<Aside>
+ `config` here is a reference to your own NixOS config, it's useful when you want to set options depending on what other options are set.
+</Aside>
+
+Next, we'll disable `mutableUsers`. Currently we allow the changing of user passwords and other user data. User information like this is stored in `/etc/passwd` and `/etc/shadow`. Instead of persisting these, we'll instruct NixOS to use a hash we generate manually.
+
+We'll create a new directory in `/nix/persist` called `secure`, this directory will only be accessible to root for security reasons, we'll place a few other things here later as well.
+
+```nix title="imperm.nix" ins={8-12} "YOURNAME"
+{
+  config,
+  inputs,
+  ...
+}: {
+  # ...
+
+  users.mutableUsers = false;
+  users.users = {
+    YOURNAME.hashedPasswordFile = "/nix/persist/secure/hashed-passwd";
+    root.hashedPasswordFile = "/nix/persist/secure/hashed-passwd";
+  };
+}
+```
+
+<Aside>
+This guide is having you use the same password for both your user and the root user, feel free to change the paths to be different if you need to. Just remember later you'll need to generate both files!
+</Aside>
+
+Additionally, we'll store our secure boot keys in `/nix/persist/secure` as well. Let's tell lanzaboote to use that directory instead.
+
+```nix title="imperm.nix" ins={8} 
+{
+  config,
+  inputs,
+  ...
+}: {
+  # ...
+
+  boot.lanzaboote.pkiBundle = "/nix/persist/secure/secureboot"; 
+}
+```
+
+Finally, we'll instruct the nix build daemon to use a directory in `/nix/perist-cache` so it doesn't fill the tmpfs when building.
+
+```nix ins={8-16} title="imperm.nix"
+{
+  config,
+  inputs,
+  ...
+}: {
+  # ...
+
+  fileSystems."/tmp/nix-build" = {
+    device = "/nix/persist-cache/nix-build";
+    options = ["bind" "X-fstrim.notrim" "x-gvfs-hide"];
+  };
+
+  systemd.services.nix-daemon = {
+    environment.TMPDIR = "/tmp/nix-build";
+    unitConfig.RequiresMountsFor = ["/tmp/nix-build" "/nix/store"];
+  };
+}
+```
+
+We've now set up our module for impermanence. Again, don't add this module to your `imports` just yet, we'll do this during reinstall.
+
+## Reinstalling NixOS With LUKS + Impermanence
+
+We'll now reinstall NixOS with our new features enabled. To start out I'd recommend backing up anything important to you. Particularly, you should back up your secure boot keys (located in `/var/lib/sbctl`) to a flash drive *you'll be able to mount during install*. We'll re-use these keys so you won't need to enroll new ones. 
+
+Since you've already installed before this section is going to hold your hand a bit less, if you ever get stuck remember you can look back [at the normal installation chapter](/chapters/7) for reference.
+
+To start out, [create and flash your installer ISO](/chapters/6/#building-the-iso), you'll want to re-create it so it has the most recent version of your flake.
+
+Now, with both your installer flash drive and a drive with (at least) your secure boot keys on it, restart your computer, disable secure boot enforcement (do *not* clear keys as we'll be re-using ones we've already enrolled), and boot into the installer.
+
+<Aside type="danger">
+ This should go without saying, but reinstalling NixOS **will clear all of the data**. You'll want to make sure that you back up data as needed as it won't be recoverable.
+</Aside>
+
+In the installer's shell, use `cgdisk` to partition your drive, you can refer to [the Disk Prep section of chapter 7](/chapters/7/#disk-prep) for reference, follow it up to quitting cgdisk, **don't run the mkfs commands as we'll need to set up LUKS first**.
+
+### LUKS Volume Setup
+
+We'll now format our new partitions for LUKS, similar to chapter 7 `PARTITION_PATH` here will refer to the `/dev` file for your disk.
+
+Set up LUKS for your main partition (3 **if you did swap**, 2 otherwise)
+
+```sh "PARTITION_PATH"
+sudo cryptsetup luksFormat PARTITION_PATH
+```
+
+You'll be prompted to enter a passphrase, make sure it's a memorable one as **you will need it if for whatever reason the volume can't be unlocked with TPM**.
+
+In addition, set up LUKS for your swap partition if your set it up.
+
+Now we'll LUKS open our newly created volumes, `cryptroot` here can be changed to whatever you prefer, it won't impact too much.
+
+```sh "PARTITION_PATH" "cryptroot"
+sudo cryptsetup open PARTITION_PATH cryptroot
+```
+
+This creates a new device at `/dev/mapper/cryptroot`, which we'll use in place of the normal device path.
+
+If you did swap, also `cryptsetup open` your swap partition, this guide will assume you named it `cryptswap`.
+
+<Steps>
+1. Setup your *boot partition* (partition `1`) 
+   ```sh "PARTITION_PATH"
+   sudo mkfs.fat -F 32 PARTITION_PATH
+   ```
+2. **If you did swap**, Setup your *swap partition* (the `cryptswap` map device): 
+   ```sh "cryptswap"
+   sudo mkswap /dev/mapper/cryptswap
+   ```
+3. **If you did swap**, Enable swapping
+   ```sh "cryptswap"
+   sudo swapon /dev/mapper/cryptswap
+   ```
+4. Setup your *main partition* (the `cryptroot` map device)
+   ```sh "cryptroot" "NIXOS"
+   sudo mkfs.ext4 /dev/mapper/cryptroot -L NIXOS
+   ```
+</Steps>
+
+We've now set up our disk for install.
+
+### Mounting our Filesystems
+
+We now need to set up `/mnt`, unlike normal installation we won't be mounting our main partition first, instead we'll mount a tmpfs to mimick our impermanence setup.
+
+```sh
+sudo mount -t tmpfs -o "size=4G" tmp /mnt
+```
+
+<Aside>
+We're dedicating 4GB of memory to the tmpfs because the build will take quite a bit. This is *not* the size we'll always have.
+</Aside>
+
+Now we'll create mount points for our boot and main partitions.
+
+```sh
+sudo mkdir -p /mnt/boot
+sudo mkdir -p /mnt/nix
+```
+
+... And mount our partitions
+
+```sh "BOOT_PARTITION_PATH"
+sudo mount BOOT_PARTITION_PATH /mnt/boot
+sudo mount /dev/mapper/cryptroot /mnt/nix
+```
+
+Finally, we'll create needed directories
+
+```sh
+sudo mkdir -p /mnt/nix/persist/secure
+sudo mkdir -p /mnt/nix/persist-cache/nix-build
+sudo chmod -R 600 /mnt/nix/persist/secure
+```
+
+### Setting Up Persist
+
+Next, plug in and mount your flash drive with your secure boot keys, this will most likely be a `/dev/sdX` path.
+
+```sh "FLASHDRIVE_PATH" "secureboot"
+sudo mkdir /flash
+sudo mount FLASHDRIVE_PATH /flash
+sudo cp -r /flash/secureboot /mnt/nix/persist/secure
+```
+
+<Aside type="caution">
+  Note your keys **must** be in `/mnt/nix/persist/secure/secureboot`, otherwise lanzaboote won't be able to find it
+</Aside>
+
+Then, we'll need to generate your user account password, you can use `mkpasswd` for this.
+
+```sh
+sudo mkpasswd > /mnt/nix/persist/secure/hashed-passwd
+```
+
+This will save your hashed password where NixOS expects it to be.
+
+### Flake Setup
+
+We're now ready to configure the new system, copy your flake (`/etc/flake`) to `/mnt/nix/persist/flake` and set it to be writeable.
+
+```sh
+sudo cp -r /etc/flake/ /mnt/nix/persist
+sudo chmod -R 644 /mnt/nix/persist/flake
+```
+
+Now edit your system to import the `imperm.nix` module from earlier in this chapter.
+
+Finally, edit your `hardware-configuration.nix`. You'll want to remove your old `fileSystems` and `swapDevices` sections and replace them to reflect the impermanence setup you've created.
+
+```nix title="hardware-configuration.nix" "BOOT_PARTITION" "MAIN_PARTITION" "SWAP_PARTITION" "cryptroot" "cryptswap"
+{config, pkgs, lib, modulesPath, ...}: {
+  # ...
+
+  fileSystems."/" = {
+    fsType = "tmpfs";
+    # Adjust the size you want for the tmpfs as needed, you shouldn't need to much but it's good to leave overhead
+    options = ["size=512M" "mode=755"];
+    neededForBoot = true;
+  };
+
+  # Stuff in /home may need more space, so we create a tmpfs there with a larger quota
+  fileSystems."/home" = {
+    fsType = "tmpfs";
+    # Also adjust as needed
+    options = ["size=2G"];
+    neededForBoot = true;
+  };
+
+  fileSystems."/boot" = {
+    device = "BOOT_PARTITION";
+    fsType = "vfat";
+    options = ["fmask=0022" "dmask=0022" "nosuid" "nodev" "noexec" "noatime"];
+  };
+
+  fileSystems."/nix" = {
+    device = "/dev/mapper/cryptroot";
+    fsType = "ext4";
+    options = ["lazytime" "nodev" "nosuid"];
+    neededForBoot = true;
+  };
+
+  boot.initrd.luks.devices."cryptroot".device = "MAIN_PARTITION";
+  
+  # If You use swap, you'll need to set it up here too
+  boot.initrd.luks.devices."cryptswap".device = "SWAP_PARTITION";
+  swapDevices = [
+    {device = "/dev/mapper/cryptswap";}
+  ];
+
+  # ...
+}
+```
+
+With those changes made, we can now build and install our system. We'll be editing our install command a bit here to not prompt for a root password, as we're setting that via the `hashedPasswordFile` option.
+
+```sh
+sudo nixos-install --flake .# --root /mnt --no-root-passwd --no-channel-copy
+```
+
+This will build your system and install NixOS to our drive!
+
+## First Boot
+
+**Before** booting into the main system, make sure to go into your UEFI settings and enable secure boot. This will both confirm that lanzaboote is still working and also allows us to perform TPM-backed LUKS enrollment.
+
+### Enrolling TPM Keys for LUKS
+
+Boot into your system, you'll need to enter the passphrase for your LUKS volumes you set up in order to boot. Don't worry, we'll make this automatic in this section.
+
+Get to a terminal and use the `systemd-cryptenroll` command to add a TPM-backed key to you LUKS volume. Replace `PARTITION_PATH` here with the *actual* device path of your main drive (so **not** the `/dev/mapper` path).
+
+```sh "PARTITION_PATH"
+sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+2+7+12 PARTITION_PATH
+```
+
+If you set up swap, you'll also need to run this command for that partition as well.
+
+With that you've enrolled the keys! When you boot next, your initrd will automatically know to try the TPM for decryption keys first, meaning you won't need to enter your password. In addition, because we used PCR 7 (secure boot state), your TPM will only release the decryption keys if your device is booting using a signed UEFI executable.
+
+### Cleaning Up
+
+You'll want to grab your updated flake source from `/nix/persist/flake` and commit/push it. 
+
+### Tuning Persistence
+
+You've also probably missed a few paths that you want to persist. Keep in mind the impermanence module *will not* be able to override existing paths, so I suggest this general workflow for adding a path to persist.
+
+We'll assume you're going to be persisting a path called `/my/path`.
+
+<Steps>
+1. Move the directory to a backup location, so we can copy it back later
+   ```sh "/my/path"
+   mv /my/path /my/path.bak
+   ```
+2. Add the path to `environment.persistence`
+3. Switch your system to have the impermanence module create bind mounts
+4. Move the *contents* of the backup directory back
+   ```sh "/my/path"
+   mv /my/path.bak/** /my/path
+   ```
+5. Remove the (now empty) backup directory
+   ```sh "/my/path"
+   rm -r /my/path.bak
+</Steps>
+
+## Installation Complete
+
+Your system is now configured with LUKS, Secure Boot, and Impermanence. 
+
