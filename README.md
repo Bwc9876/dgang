@@ -1,4 +1,3 @@
-
 # DGANG - Dear God, Another Nix/NixOS Guide
 
 A different approach to learning Nix/NixOS from the comfort of your current distro.

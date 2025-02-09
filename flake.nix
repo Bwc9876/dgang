@@ -15,6 +15,10 @@
     flakelight ./. {
       pname = "dgang";
       inherit inputs;
+      formatters = {
+        "*.nix" = "alejandra .";
+        "*.{js,ts,astro,json,yml}" = "prettier --write .";
+      };
       package = pkgs: let
         src = ./.;
       in
@@ -36,6 +40,8 @@
           packages = with pkgs; [
             d2
             nodejs
+            nodePackages.prettier
+            alejandra
           ];
         };
     };
